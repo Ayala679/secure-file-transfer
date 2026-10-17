@@ -177,11 +177,11 @@
 
 | רכיב | מצב | מה לעשות |
 |---|---|---|
-| Python | 3.13.5 מותקן | להתקין **3.12** (הגרסה הקובעת) ולעבוד איתה |
-| PyCryptodome | ❌ לא מותקן | `pip install pycryptodome` |
-| ruff | ✅ 0.16.7 | – |
+| Python | ✅ 3.12.10 בסביבה וירטואלית `.venv` בתיקיית הפרויקט (3.13 נשאר מותקן אבל לא בשימוש) | להריץ תמיד דרך `.venv\Scripts\python.exe` |
+| PyCryptodome | ✅ 4.0.1 בתוך `.venv` | – |
+| ruff | ✅ 0.17.1 בתוך `.venv` | `.venv\Scripts\python.exe -m ruff check server` |
 | Visual Studio | Community **2022** | הבדיקה ב-**2026** – להתקין VS Community 2026 עם workload "Desktop development with C++" (D31) |
-| CryptoPP | ❌ לא נמצא | התקנה דרך vcpkg (ראו למטה) |
+| CryptoPP | ✅ גרסת vcpkg 2026-03-02, ב-`C:\vcpkg`, עם `integrate install` | נבדק: AES-CBC עובד, מפתח ציבורי RSA-1024 = **160 בתים** (מאשר את D16) |
 | `cksum` | ✅ ב-Git Bash | משמש לבדיקת ה-CRC |
 | git | ✅ מאגר נפרד בתיקיית הפרויקט, ענף `main` | – |
 
@@ -199,52 +199,4 @@ C:\vcpkg\vcpkg integrate install
 
 ## 8. מעקב התקדמות
 
-סימון: ⬜ לא התחלנו · 🟨 בעבודה · ✅ עובד ונבדק
-
-### שלב 0 – סביבה
-| # | משימה | בדיקה | מצב |
-|---|---|---|---|
-| 0.1 | מאגר git בתיקיית הפרויקט + `.gitignore` | `git status` | ✅ (github.com/Ayala679/secure-file-transfer) |
-| 0.2 | Python 3.12 + pycryptodome | `python -c "import Crypto"` | ⬜ |
-| 0.3 | vcpkg + CryptoPP | פרויקט Hello World שמצפין מחרוזת ב-AES | ⬜ |
-| 0.4 | להעתיק את קוד הדוגמה של יחידה 7 ל-`docs/unit7/` | – | ⬜ |
-| 0.5 | VS Community 2026 + פרויקט עם `/std:c++20` | פרויקט Hello World מתקמפל ב-2026 עם CryptoPP | ⬜ |
-
-### שלב 1 – שרת
-| # | משימה | בדיקה | מצב |
-|---|---|---|---|
-| S1 | `config.py` | קובץ חסר / ריק / טקסט / פורט 0 או 70000 | ⬜ |
-| S2 | `protocol.py` | גדלי כותרות 23/7, pack→unpack זהה | ⬜ |
-| S3 | `cksum.py` | זהה ל-`cksum` של Git Bash על 3+ קבצים (כולל ריק) | ⬜ |
-| S4 | `crypto_utils.py` | round-trip RSA + AES בתוך Python | ⬜ |
-| S5 | `client_store.py` | רישום כפול נדחה, חיפוש לפי ID | ⬜ |
-| S6 | `session.py` – רק 825 | `test_client.py` נרשם ומקבל 1600, שם כפול → 1601 | ⬜ |
-| S7 | 826 + 827 | מקבלים AES מוצפן ומפענחים בצד הבדיקה | ⬜ |
-| S8 | 828 (חבילות) + 900/901/902 | קובץ 100KB עובר, CRC תואם, הקובץ שמור | ⬜ |
-| S9 | `server.py` – threads + timeout | 3 לקוחות במקביל | ⬜ |
-| S10 | קלט זדוני | גודל ענק, קוד לא מוכר, שם `../x`, חיבור שנסגר באמצע → השרת ממשיך | ⬜ |
-| S11 | ruff נקי | `ruff check server` | ⬜ |
-
-### שלב 2 – לקוח
-| # | משימה | בדיקה | מצב |
-|---|---|---|---|
-| C0 | `Constants.h` + `Errors.h` | מתקמפל; אין מספרים ישירים בשאר הקוד | ⬜ |
-| C1 | `Endian` + `Protocol` | בתים זהים ל-`protocol.py` | ⬜ |
-| C2 | `JsonParser` + `TransferConfig` | הדוגמה מההוראות + קבצים שבורים | ⬜ |
-| C3 | `Base64` + `ClientIdentity` | כתיבה → קריאה → השוואה | ⬜ |
-| C4 | `Cksum` | זהה ל-`cksum` ול-Python | ⬜ |
-| C5 | `RsaWrapper` | ציבורי = 160 בתים; Python מצפין → C++ מפענח | ⬜ |
-| C6 | `AesWrapper` | C++ מצפין → Python מפענח | ⬜ |
-| C7 | `TcpConnection` | שליחה וקבלה מול השרת | ⬜ |
-| C8 | `FileTransferClient` – רישום / התחברות חוזרת | ריצה ראשונה → 1600+1602; ריצה שנייה → 1605 | ⬜ |
-| C9 | שליחת קבצים + CRC + ניסיונות חוזרים | 100KB, קובץ ריק, 10MB, כמה קבצים | ⬜ |
-| C10 | מקרי קצה | קובץ לא קיים, שרת כבוי, 1606, `me.info` פגום | ⬜ |
-
-### שלב 3 – סיום
-| # | משימה | מצב |
-|---|---|---|
-| F1 | שאלה 2 – מסמך חולשות (טבלה בפורמט יחידה 3) | ⬜ |
-| F2 | בנייה מחדש בתיקייה נקייה + פרויקט VS חדש (רצוי VS 2026) | ⬜ |
-| F3 | הקלטת וידאו | ⬜ |
-| F4 | zip להגשה | ⬜ |
-| B1 | ⏸️ בונוס SQLite – רק אם נשאר זמן | ⬜ |
+התוכנית היומית והמעקב אחרי המשימות נמצאים ב-[PLAN.md](PLAN.md).
