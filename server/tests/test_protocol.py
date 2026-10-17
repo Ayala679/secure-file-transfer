@@ -6,9 +6,15 @@ from protocol import (
     ProtocolError,
     RequestCode,
     ResponseCode,
+    aes_key_payload,
     build_response,
+    client_id_payload,
     decode_name,
     encode_name,
+    file_received_payload,
+    parse_file_packet_header,
+    parse_name_payload,
+    parse_public_key_payload,
     parse_request_header,
 )
 
@@ -113,6 +119,53 @@ class NameFieldTest(unittest.TestCase):
             encode_name("a" * 255)
         with self.assertRaises(UnicodeEncodeError):
             encode_name("שלום")
+
+
+class PayloadTest(unittest.TestCase):
+    CLIENT_ID = bytes(range(16))
+
+    def test_name_payload(self):
+        self.assertEqual(parse_name_payload(encode_name("Ayala")), "Ayala")
+        for size in (254, 256):
+            with self.assertRaises(ProtocolError):
+                parse_name_payload(bytes(size))
+
+    def test_public_key_payload(self):
+        key = bytes(range(160))
+        payload = encode_name("Ayala") + key
+        self.assertEqual(len(payload), 415)
+        self.assertEqual(parse_public_key_payload(payload), ("Ayala", key))
+        with self.assertRaises(ProtocolError):
+            parse_public_key_payload(payload[:-1])
+
+    def test_file_packet_header(self):
+        raw = (bytes.fromhex("10000000") + bytes.fromhex("05000000")
+               + bytes.fromhex("0100") + bytes.fromhex("0300") + encode_name("a.bin"))
+        self.assertEqual(len(raw), 267)
+        header = parse_file_packet_header(raw)
+        self.assertEqual(tuple(header), (16, 5, 1, 3, "a.bin"))
+
+    def test_file_packet_bad_numbering(self):
+        for packet, total in ((1, 0), (4, 3)):
+            raw = protocol.FILE_PACKET_HEADER.pack(16, 5, packet, total, encode_name("a"))
+            with self.assertRaises(ProtocolError):
+                parse_file_packet_header(raw)
+
+    def test_response_payload_sizes(self):
+        self.assertEqual(len(client_id_payload(self.CLIENT_ID)), 16)
+        self.assertEqual(len(aes_key_payload(self.CLIENT_ID, bytes(128))), 144)
+        self.assertEqual(len(file_received_payload(self.CLIENT_ID, 16, "a.bin", 1)), 279)
+
+    def test_file_received_bytes(self):
+        raw = file_received_payload(self.CLIENT_ID, 0x20, "x", 0x01020304)
+        self.assertEqual(raw[:16], self.CLIENT_ID)
+        self.assertEqual(raw[16:20].hex(), "20000000")
+        self.assertEqual(raw[20:22], b"x\0")
+        self.assertEqual(raw[-4:].hex(), "04030201")
+
+    def test_bad_client_id(self):
+        with self.assertRaises(ProtocolError):
+            client_id_payload(bytes(15))
 
 
 if __name__ == "__main__":

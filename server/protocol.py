@@ -14,6 +14,10 @@ REQUEST_HEADER = struct.Struct(f"<{CLIENT_ID_SIZE}sBHI")
 RESPONSE_HEADER = struct.Struct("<BHI")
 MAX_PAYLOAD_SIZE = 0xFFFFFFFF
 
+PUBLIC_KEY_PAYLOAD_SIZE = NAME_SIZE + PUBLIC_KEY_SIZE
+FILE_PACKET_HEADER = struct.Struct(f"<IIHH{NAME_SIZE}s")
+FILE_RECEIVED = struct.Struct(f"<{CLIENT_ID_SIZE}sI{NAME_SIZE}sI")
+
 
 class RequestCode(IntEnum):
     REGISTER = 825
@@ -47,6 +51,14 @@ class RequestHeader(NamedTuple):
     payload_size: int
 
 
+class FilePacketHeader(NamedTuple):
+    content_size: int
+    orig_size: int
+    packet_number: int
+    total_packets: int
+    file_name: str
+
+
 def parse_request_header(data):
     if len(data) != REQUEST_HEADER.size:
         raise ProtocolError(f"bad header length {len(data)}")
@@ -77,6 +89,49 @@ def encode_name(text):
     if len(raw) >= NAME_SIZE:
         raise ProtocolError("name too long")
     return raw.ljust(NAME_SIZE, b"\0")
+
+
+def _check_size(payload, expected):
+    if len(payload) != expected:
+        raise ProtocolError(f"payload is {len(payload)} bytes, expected {expected}")
+
+
+def parse_name_payload(payload):
+    _check_size(payload, NAME_SIZE)
+    return decode_name(payload)
+
+
+def parse_public_key_payload(payload):
+    _check_size(payload, PUBLIC_KEY_PAYLOAD_SIZE)
+    return decode_name(payload[:NAME_SIZE]), payload[NAME_SIZE:]
+
+
+def parse_file_packet_header(data):
+    _check_size(data, FILE_PACKET_HEADER.size)
+    content_size, orig_size, packet, total, name = FILE_PACKET_HEADER.unpack(data)
+    if total == 0 or packet > total:
+        raise ProtocolError(f"bad packet numbering {packet}/{total}")
+    return FilePacketHeader(content_size, orig_size, packet, total, decode_name(name))
+
+
+def _check_client_id(client_id):
+    if len(client_id) != CLIENT_ID_SIZE:
+        raise ProtocolError("bad client id")
+
+
+def client_id_payload(client_id):
+    _check_client_id(client_id)
+    return client_id
+
+
+def aes_key_payload(client_id, encrypted_key):
+    _check_client_id(client_id)
+    return client_id + encrypted_key
+
+
+def file_received_payload(client_id, content_size, file_name, cksum):
+    _check_client_id(client_id)
+    return FILE_RECEIVED.pack(client_id, content_size, encode_name(file_name), cksum)
 
 
 def build_response(code, payload=b""):
