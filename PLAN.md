@@ -57,7 +57,7 @@
 ---
 
 ## יום 2 – השרת: רישום ומפתחות (ב' 19.10)
-- [ ] **2.1** `client_store.py` – ‏`ClientRecord`, ‏`FileRecord`, ‏`ClientStore` עם `Lock`
+- [x] **2.1** `client_store.py` – ‏`ClientRecord`, ‏`FileRecord`, ‏`ClientStore` עם `Lock`
   🧪 הוספה · חיפוש לפי שם · חיפוש לפי ID · שם כפול נדחה · עדכון מפתח ציבורי ו-AES
 - [ ] **2.2** `session.py` – ‏`recv_exact`, קריאת כותרת, ניתוב לפי קוד, קוד לא מוכר → 1607
 - [ ] **2.3** `server.py` – ‏`main()`, ‏`bind`/`listen`, **חיבור אחד בכל פעם** (עוד בלי threads), טיפול ב-825
