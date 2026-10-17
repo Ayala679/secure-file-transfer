@@ -2,6 +2,8 @@ import logging
 import threading
 import unittest
 
+from Crypto.Cipher import PKCS1_OAEP
+from Crypto.PublicKey import RSA
 from fake_client import FakeClient
 
 from server import Server
@@ -26,6 +28,10 @@ def connect():
     return FakeClient(HOST, server.port)
 
 
+def server_store():
+    return server._store
+
+
 class RegisterEndToEndTest(unittest.TestCase):
     def test_register(self):
         with connect() as c:
@@ -44,6 +50,48 @@ class RegisterEndToEndTest(unittest.TestCase):
             self.assertEqual(c.request(999), (3, 1607, b""))
         with connect() as c:
             self.assertEqual(c.register("e2e-after-error")[0], 1600)
+
+
+class PublicKeyEndToEndTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.rsa = RSA.generate(1024, e=17)
+        cls.public_der = cls.rsa.public_key().export_key("DER")
+
+    def test_receives_encrypted_aes_key(self):
+        with connect() as c:
+            c.register("pk-user")
+            code, payload = c.send_public_key("pk-user", self.public_der)
+        self.assertEqual(code, 1602)
+        self.assertEqual(payload[:16], c.client_id)
+        aes_key = PKCS1_OAEP.new(self.rsa).decrypt(payload[16:])
+        self.assertEqual(len(aes_key), 32)
+        self.assertEqual(server_store().get(c.client_id).aes_key, aes_key)
+        self.assertEqual(server_store().get(c.client_id).public_key, self.public_der)
+
+    def test_unregistered_client_id(self):
+        with connect() as c:
+            c.client_id = b"\x01" * 16
+            self.assertEqual(c.send_public_key("nobody", self.public_der), (1607, b""))
+
+    def test_name_mismatch(self):
+        with connect() as c:
+            c.register("pk-owner")
+            self.assertEqual(c.send_public_key("someone-else", self.public_der), (1607, b""))
+
+    def test_bad_key(self):
+        with connect() as c:
+            c.register("pk-bad")
+            self.assertEqual(c.send_public_key("pk-bad", bytes(160)), (1607, b""))
+            self.assertIsNone(server_store().get(c.client_id).public_key)
+
+    def test_second_key_gives_new_aes(self):
+        with connect() as c:
+            c.register("pk-twice")
+            first = c.send_public_key("pk-twice", self.public_der)[1]
+            second = c.send_public_key("pk-twice", self.public_der)[1]
+        decrypt = PKCS1_OAEP.new(self.rsa).decrypt
+        self.assertNotEqual(decrypt(first[16:]), decrypt(second[16:]))
 
 
 if __name__ == "__main__":

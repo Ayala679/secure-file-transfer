@@ -53,6 +53,10 @@ class FakeClient:
             self.client_id = payload
         return code, payload
 
+    def send_public_key(self, name, public_key_der):
+        _, code, payload = self.request(826, name_field(name) + public_key_der)
+        return code, payload
+
 
 if __name__ == "__main__":
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 1234

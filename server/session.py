@@ -1,17 +1,20 @@
 import logging
 
 from client_store import NameTakenError, StoreError
-from crypto_utils import CryptoError
+from crypto_utils import CryptoError, encrypt_aes_key, generate_aes_key
 from protocol import (
     CLIENT_VERSION,
     NAME_SIZE,
+    PUBLIC_KEY_PAYLOAD_SIZE,
     REQUEST_HEADER,
     ProtocolError,
     RequestCode,
     ResponseCode,
+    aes_key_payload,
     build_response,
     client_id_payload,
     parse_name_payload,
+    parse_public_key_payload,
     parse_request_header,
 )
 
@@ -32,6 +35,7 @@ class ClientSession:
         # code -> (handler, exact payload size)
         self._handlers = {
             RequestCode.REGISTER: (self._handle_register, NAME_SIZE),
+            RequestCode.PUBLIC_KEY: (self._handle_public_key, PUBLIC_KEY_PAYLOAD_SIZE),
         }
 
     def run(self):
@@ -65,6 +69,7 @@ class ClientSession:
             self._send(ResponseCode.GENERAL_ERROR)
             return False
 
+        self._store.touch(header.client_id)
         handler, expected_size = entry
         if header.payload_size != expected_size:
             # can't trust the rest of the stream after a bad length
@@ -91,6 +96,26 @@ class ClientSession:
             return
         logger.info("[%s] registered '%s' as %s", self._peer, name, record.client_id.hex())
         self._send(ResponseCode.REGISTER_OK, client_id_payload(record.client_id))
+
+    def _known_client(self, client_id, name):
+        record = self._store.get(client_id)
+        if record is None:
+            raise ProtocolError(f"unknown client id {client_id.hex()}")
+        if record.name != name:
+            raise ProtocolError(f"name '{name}' does not match client id")
+        return record
+
+    def _handle_public_key(self, header, payload):
+        name, public_key = parse_public_key_payload(payload)
+        self._known_client(header.client_id, name)
+
+        aes_key = generate_aes_key()
+        encrypted_key = encrypt_aes_key(public_key, aes_key)
+        self._store.set_public_key(header.client_id, public_key)
+        self._store.set_aes_key(header.client_id, aes_key)
+
+        logger.info("[%s] got public key from '%s', sending AES key", self._peer, name)
+        self._send(ResponseCode.AES_KEY, aes_key_payload(header.client_id, encrypted_key))
 
     def _recv_header(self):
         first = self._sock.recv(REQUEST_HEADER.size)
