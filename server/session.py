@@ -1,4 +1,5 @@
 import logging
+import socket
 from pathlib import Path
 
 from client_store import FileRecord, NameTakenError, StoreError
@@ -24,12 +25,18 @@ from protocol import (
 )
 
 RECV_CHUNK_SIZE = 64 * 1024
+CLOSE_DRAIN_TIMEOUT = 1.0
+CLOSE_DRAIN_LIMIT = 1024 * 1024
 DEFAULT_FILES_DIR = Path(__file__).resolve().parent / "received_files"
 
 logger = logging.getLogger(__name__)
 
 
 class ConnectionClosed(Exception):
+    pass
+
+
+class IdleTimeout(Exception):
     pass
 
 
@@ -63,16 +70,32 @@ class ClientSession:
         try:
             while self._serve_one_request():
                 pass
-        except ConnectionClosed:
-            logger.info("[%s] connection closed by client", self._peer)
-        except TimeoutError:
+        except ConnectionClosed as e:
+            logger.info("[%s] connection closed %s", self._peer, e or "by client")
+        except IdleTimeout:
             logger.info("[%s] idle timeout, disconnecting", self._peer)
-        except OSError as e:
-            logger.warning("[%s] socket error: %s", self._peer, e)
+        except Exception as e:  # noqa: BLE001 - one bad client must never stop the server
+            logger.error("[%s] unexpected error: %r", self._peer, e)
         finally:
             self._drop_incoming()
-            self._sock.close()
+            self._close_gracefully()
             logger.info("[%s] disconnected", self._peer)
+
+    def _close_gracefully(self):
+        # closing with unread data makes Windows send RST, which can drop our last response
+        try:
+            self._sock.shutdown(socket.SHUT_WR)
+            self._sock.settimeout(CLOSE_DRAIN_TIMEOUT)
+            drained = 0
+            while drained < CLOSE_DRAIN_LIMIT:
+                chunk = self._sock.recv(RECV_CHUNK_SIZE)
+                if not chunk:
+                    break
+                drained += len(chunk)
+        except OSError:
+            pass
+        finally:
+            self._sock.close()
 
     def _serve_one_request(self):
         raw = self._recv_header()
@@ -106,7 +129,7 @@ class ClientSession:
                 handler(header)
             else:
                 handler(header, self._read_payload(header.payload_size))
-        except (ProtocolError, StoreError, CryptoError) as e:
+        except (ProtocolError, StoreError, CryptoError, OSError) as e:
             logger.warning("[%s] request %d failed: %s", self._peer, header.code, e)
             self._drop_incoming()
             self._skip_unread()
@@ -259,8 +282,18 @@ class ClientSession:
         while self._unread:
             self._read_payload(min(self._unread, RECV_CHUNK_SIZE))
 
+    # socket errors become ConnectionClosed/IdleTimeout, so any OSError
+    # that reaches a handler is a local (disk) problem
+    def _recv(self, size):
+        try:
+            return self._sock.recv(size)
+        except TimeoutError:
+            raise IdleTimeout() from None
+        except OSError as e:
+            raise ConnectionClosed(f"({e})") from e
+
     def _recv_header(self):
-        first = self._sock.recv(REQUEST_HEADER.size)
+        first = self._recv(REQUEST_HEADER.size)
         if not first:
             return None
         return first + self.recv_exact(REQUEST_HEADER.size - len(first))
@@ -268,12 +301,17 @@ class ClientSession:
     def recv_exact(self, size):
         buf = bytearray()
         while len(buf) < size:
-            chunk = self._sock.recv(min(size - len(buf), RECV_CHUNK_SIZE))
+            chunk = self._recv(min(size - len(buf), RECV_CHUNK_SIZE))
             if not chunk:
                 raise ConnectionClosed()
             buf += chunk
         return bytes(buf)
 
     def _send(self, code, payload=b""):
-        self._sock.sendall(build_response(code, payload))
+        try:
+            self._sock.sendall(build_response(code, payload))
+        except TimeoutError:
+            raise IdleTimeout() from None
+        except OSError as e:
+            raise ConnectionClosed(f"({e})") from e
         logger.info("[%s] response %d", self._peer, code)
