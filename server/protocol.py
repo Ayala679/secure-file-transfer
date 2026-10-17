@@ -41,6 +41,15 @@ class ResponseCode(IntEnum):
     GENERAL_ERROR = 1607
 
 
+def code_name(code):
+    for codes in (RequestCode, ResponseCode):
+        try:
+            return f"{code} {codes(code).name}"
+        except ValueError:
+            pass
+    return str(code)
+
+
 class ProtocolError(Exception):
     pass
 

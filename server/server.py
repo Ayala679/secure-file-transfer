@@ -29,6 +29,7 @@ class Server:
             self.port = listener.getsockname()[1]
             self.ready.set()
             logger.info("server version %d listening on port %d", SERVER_VERSION, self.port)
+            logger.info("received files are stored in %s", self._files_dir)
             while True:
                 try:
                     conn, address = listener.accept()

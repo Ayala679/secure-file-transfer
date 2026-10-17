@@ -34,6 +34,11 @@ class ConstantsTest(unittest.TestCase):
     def test_response_codes(self):
         self.assertEqual([c.value for c in ResponseCode], list(range(1600, 1608)))
 
+    def test_code_name(self):
+        self.assertEqual(protocol.code_name(825), "825 REGISTER")
+        self.assertEqual(protocol.code_name(1607), "1607 GENERAL_ERROR")
+        self.assertEqual(protocol.code_name(999), "999")
+
     def test_field_sizes(self):
         self.assertEqual(protocol.CLIENT_ID_SIZE, 16)
         self.assertEqual(protocol.NAME_SIZE, 255)

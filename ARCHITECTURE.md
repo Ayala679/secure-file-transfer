@@ -129,6 +129,7 @@
 | `cksum.py` | `Cksum` (`update(bytes)`, `digest(total_len)`) | CRC מצטבר, זהה ל-`cksum` |
 | `crypto_utils.py` | `generate_aes_key()`, `encrypt_aes_key(pub_der, key)`, `AesCbcStreamDecryptor` | הצפנה ופענוח |
 | `client_store.py` | `ClientRecord`, `FileRecord` (dataclass), `ClientStore` | רישום, חיפוש לפי שם / ID, עדכון מפתחות, רשימת קבצים. כל פעולה תחת `Lock` |
+| `file_transfer.py` | `IncomingFile`, `safe_file_name` | קבלת קובץ לקובץ זמני, פענוח זורם + cksum, ניקוי שם הקובץ |
 | `session.py` | `ClientSession` | `recv_exact`, קריאת כותרת, ניתוב לפי קוד (`_handle_register`, `_handle_public_key`, `_handle_reconnect`, `_handle_file`, `_handle_crc_*`), תפיסת חריגות → 1607 |
 | `server.py` | `Server`, `main()` | bind/listen, accept בלולאה אינסופית, thread לכל חיבור |
 

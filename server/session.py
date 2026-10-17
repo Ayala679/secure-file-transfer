@@ -17,6 +17,7 @@ from protocol import (
     aes_key_payload,
     build_response,
     client_id_payload,
+    code_name,
     file_received_payload,
     parse_file_packet_header,
     parse_name_payload,
@@ -102,7 +103,8 @@ class ClientSession:
         if raw is None:
             return False
         header = parse_request_header(raw)
-        logger.info("[%s] request %d, payload %d bytes", self._peer, header.code, header.payload_size)
+        logger.info("[%s] <- request %s (%d bytes)", self._peer, code_name(header.code),
+                    header.payload_size)
         if header.version != CLIENT_VERSION:
             logger.warning("[%s] client version %d, expected %d - continuing",
                            self._peer, header.version, CLIENT_VERSION)
@@ -216,6 +218,8 @@ class ClientSession:
 
         while self._unread:
             self._incoming.write(self._read_payload(min(self._unread, RECV_CHUNK_SIZE)))
+        logger.info("[%s] packet %d/%d, %d/%d bytes", self._peer, packet.packet_number,
+                    packet.total_packets, self._incoming.received, packet.content_size)
 
         if not self._incoming.complete:
             if packet.packet_number == packet.total_packets:
@@ -314,4 +318,4 @@ class ClientSession:
             raise IdleTimeout() from None
         except OSError as e:
             raise ConnectionClosed(f"({e})") from e
-        logger.info("[%s] response %d", self._peer, code)
+        logger.info("[%s] -> response %s", self._peer, code_name(code))
