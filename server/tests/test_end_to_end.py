@@ -273,5 +273,41 @@ class CrcResultEndToEndTest(FileClientMixin, unittest.TestCase):
         self.assertEqual(c.crc_ok("f.bin"), (1604, c.client_id))
 
 
+class ConcurrencyEndToEndTest(FileClientMixin, unittest.TestCase):
+    def test_parallel_file_transfers(self):
+        results = {}
+
+        def worker(i):
+            with connect() as c:
+                aes_key = c.setup(f"par-{uuid.uuid4().hex[:12]}", self.rsa)
+                data = os.urandom(200_000 + i)
+                code, info = c.send_file(f"p{i}.bin", data, aes_key, 4096)
+                ok = code == 1603 and info[3] == cksum_bytes(data)
+                saved = files_dir() / c.client_id.hex() / f"p{i}.bin"
+                results[i] = ok and saved.read_bytes() == data
+
+        threads = [threading.Thread(target=worker, args=(i,)) for i in range(3)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join(30)
+        self.assertEqual(results, {0: True, 1: True, 2: True})
+
+    def test_idle_client_does_not_block_others(self):
+        with connect(), connect() as other:
+            self.assertEqual(other.register(f"busy-{uuid.uuid4().hex[:8]}")[0], 1600)
+
+
+class IdleTimeoutTest(unittest.TestCase):
+    def test_idle_connection_is_closed(self):
+        short = Server(0, files_dir(), idle_timeout=1)
+        threading.Thread(target=short.serve_forever, daemon=True).start()
+        self.assertTrue(short.ready.wait(5))
+        with FakeClient(HOST, short.port, timeout=5) as c:
+            self.assertEqual(c.sock.recv(1), b"")
+        with FakeClient(HOST, short.port) as c:
+            self.assertEqual(c.register("after-timeout")[0], 1600)
+
+
 if __name__ == "__main__":
     unittest.main()
