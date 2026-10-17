@@ -1,5 +1,6 @@
 import struct
 from enum import IntEnum
+from typing import NamedTuple
 
 SERVER_VERSION = 3
 
@@ -11,6 +12,7 @@ CKSUM_SIZE = 4
 
 REQUEST_HEADER = struct.Struct(f"<{CLIENT_ID_SIZE}sBHI")
 RESPONSE_HEADER = struct.Struct("<BHI")
+MAX_PAYLOAD_SIZE = 0xFFFFFFFF
 
 
 class RequestCode(IntEnum):
@@ -32,3 +34,26 @@ class ResponseCode(IntEnum):
     RECONNECT_OK = 1605
     RECONNECT_DENIED = 1606
     GENERAL_ERROR = 1607
+
+
+class ProtocolError(Exception):
+    pass
+
+
+class RequestHeader(NamedTuple):
+    client_id: bytes
+    version: int
+    code: int
+    payload_size: int
+
+
+def parse_request_header(data):
+    if len(data) != REQUEST_HEADER.size:
+        raise ProtocolError(f"bad header length {len(data)}")
+    return RequestHeader(*REQUEST_HEADER.unpack(data))
+
+
+def build_response(code, payload=b""):
+    if len(payload) > MAX_PAYLOAD_SIZE:
+        raise ProtocolError("payload too large")
+    return RESPONSE_HEADER.pack(SERVER_VERSION, code, len(payload)) + payload
