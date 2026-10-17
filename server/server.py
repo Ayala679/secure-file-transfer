@@ -4,7 +4,7 @@ import threading
 
 from client_store import ClientStore
 from config import read_port
-from session import ClientSession
+from session import DEFAULT_FILES_DIR, ClientSession
 
 CLIENT_IDLE_TIMEOUT = 5 * 60
 ACCEPT_POLL_INTERVAL = 1.0
@@ -14,10 +14,11 @@ logger = logging.getLogger("server")
 
 
 class Server:
-    def __init__(self, port):
+    def __init__(self, port, files_dir=DEFAULT_FILES_DIR):
         self.port = port
         self.ready = threading.Event()
         self._store = ClientStore()
+        self._files_dir = files_dir
 
     def serve_forever(self):
         with socket.create_server(("", self.port), backlog=LISTEN_BACKLOG) as listener:
@@ -32,7 +33,7 @@ class Server:
                 except TimeoutError:
                     continue
                 conn.settimeout(CLIENT_IDLE_TIMEOUT)
-                ClientSession(conn, self._store, address).run()
+                ClientSession(conn, self._store, address, self._files_dir).run()
 
 
 def main():

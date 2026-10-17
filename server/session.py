@@ -1,9 +1,12 @@
 import logging
+from pathlib import Path
 
-from client_store import NameTakenError, StoreError
+from client_store import FileRecord, NameTakenError, StoreError
 from crypto_utils import CryptoError, encrypt_aes_key, generate_aes_key
+from file_transfer import MAX_CONTENT_SIZE, IncomingFile, same_file
 from protocol import (
     CLIENT_VERSION,
+    FILE_PACKET_HEADER,
     NAME_SIZE,
     PUBLIC_KEY_PAYLOAD_SIZE,
     REQUEST_HEADER,
@@ -13,12 +16,15 @@ from protocol import (
     aes_key_payload,
     build_response,
     client_id_payload,
+    file_received_payload,
+    parse_file_packet_header,
     parse_name_payload,
     parse_public_key_payload,
     parse_request_header,
 )
 
 RECV_CHUNK_SIZE = 64 * 1024
+DEFAULT_FILES_DIR = Path(__file__).resolve().parent / "received_files"
 
 logger = logging.getLogger(__name__)
 
@@ -28,16 +34,26 @@ class ConnectionClosed(Exception):
 
 
 class ClientSession:
-    def __init__(self, sock, store, address):
+    def __init__(self, sock, store, address, files_dir=DEFAULT_FILES_DIR):
         self._sock = sock
         self._store = store
         self._peer = f"{address[0]}:{address[1]}"
-        # code -> (handler, exact payload size)
+        self._files_dir = Path(files_dir)
+        self._unread = 0
+        self._incoming = None
+        self._packet = None
+        self._rejected = None
+        # code -> (handler, min payload size, max payload size)
         self._handlers = {
-            RequestCode.REGISTER: (self._handle_register, NAME_SIZE),
-            RequestCode.PUBLIC_KEY: (self._handle_public_key, PUBLIC_KEY_PAYLOAD_SIZE),
-            RequestCode.RECONNECT: (self._handle_reconnect, NAME_SIZE),
+            RequestCode.REGISTER: (self._handle_register, NAME_SIZE, NAME_SIZE),
+            RequestCode.PUBLIC_KEY: (self._handle_public_key, PUBLIC_KEY_PAYLOAD_SIZE,
+                                     PUBLIC_KEY_PAYLOAD_SIZE),
+            RequestCode.RECONNECT: (self._handle_reconnect, NAME_SIZE, NAME_SIZE),
+            RequestCode.SEND_FILE: (self._handle_file_packet, FILE_PACKET_HEADER.size,
+                                    FILE_PACKET_HEADER.size + MAX_CONTENT_SIZE),
         }
+        # these handlers read their own payload from the socket
+        self._streamed = {RequestCode.SEND_FILE}
 
     def run(self):
         logger.info("[%s] connected", self._peer)
@@ -51,6 +67,7 @@ class ClientSession:
         except OSError as e:
             logger.warning("[%s] socket error: %s", self._peer, e)
         finally:
+            self._drop_incoming()
             self._sock.close()
             logger.info("[%s] disconnected", self._peer)
 
@@ -71,20 +88,31 @@ class ClientSession:
             return False
 
         self._store.touch(header.client_id)
-        handler, expected_size = entry
-        if header.payload_size != expected_size:
+        handler, min_size, max_size = entry
+        if not min_size <= header.payload_size <= max_size:
             # can't trust the rest of the stream after a bad length
             logger.warning("[%s] bad payload size %d for code %d",
                            self._peer, header.payload_size, header.code)
             self._send(ResponseCode.GENERAL_ERROR)
             return False
 
-        payload = self.recv_exact(header.payload_size)
+        self._unread = header.payload_size
+        self._packet = None
         try:
-            handler(header, payload)
+            if header.code in self._streamed:
+                handler(header)
+            else:
+                handler(header, self._read_payload(header.payload_size))
         except (ProtocolError, StoreError, CryptoError) as e:
             logger.warning("[%s] request %d failed: %s", self._peer, header.code, e)
-            self._send(ResponseCode.GENERAL_ERROR)
+            self._drop_incoming()
+            self._skip_unread()
+            packet = self._packet
+            if packet is not None and packet.packet_number < packet.total_packets:
+                # the client expects one answer per file, so wait for its last packet
+                self._rejected = packet
+            else:
+                self._send(ResponseCode.GENERAL_ERROR)
         return True
 
     def _handle_register(self, header, payload):
@@ -134,6 +162,68 @@ class ClientSession:
         self._store.set_aes_key(header.client_id, aes_key)
         logger.info("[%s] '%s' reconnected, sending new AES key", self._peer, name)
         self._send(ResponseCode.RECONNECT_OK, aes_key_payload(header.client_id, encrypted_key))
+
+    def _handle_file_packet(self, header):
+        packet = parse_file_packet_header(self._read_payload(FILE_PACKET_HEADER.size))
+        self._packet = packet
+
+        if self._rejected is not None:
+            if same_file(self._rejected, packet):
+                self._skip_unread()
+                if packet.packet_number == packet.total_packets:
+                    self._rejected = None
+                    self._send(ResponseCode.GENERAL_ERROR)
+                return
+            self._rejected = None
+
+        record = self._store.get(header.client_id)
+        if record is None or record.aes_key is None:
+            raise ProtocolError("file sent before key exchange")
+
+        if self._incoming is not None and not self._incoming.belongs(packet):
+            raise ProtocolError("packet does not match the file being received")
+        if self._incoming is None:
+            folder = self._files_dir / header.client_id.hex()
+            self._incoming = IncomingFile(folder, packet)
+            logger.info("[%s] receiving '%s': %d bytes in %d packets", self._peer,
+                        packet.file_name, packet.content_size, packet.total_packets)
+
+        while self._unread:
+            self._incoming.write(self._read_payload(min(self._unread, RECV_CHUNK_SIZE)))
+
+        if not self._incoming.complete:
+            if packet.packet_number == packet.total_packets:
+                raise ProtocolError("last packet arrived but file is incomplete")
+            return
+
+        incoming, self._incoming = self._incoming, None
+        cksum, plain_size = incoming.finish(record.aes_key)
+        if plain_size != packet.orig_size:
+            logger.warning("[%s] '%s' decrypted to %d bytes, client said %d", self._peer,
+                           packet.file_name, plain_size, packet.orig_size)
+
+        relative_path = incoming.target.relative_to(self._files_dir.parent).as_posix()
+        self._store.save_file(FileRecord(header.client_id, packet.file_name, relative_path))
+        logger.info("[%s] saved '%s' as %s, cksum %d", self._peer, packet.file_name,
+                    relative_path, cksum)
+        self._send(ResponseCode.FILE_RECEIVED, file_received_payload(
+            header.client_id, packet.content_size, packet.file_name, cksum))
+
+    def _drop_incoming(self):
+        if self._incoming is not None:
+            self._incoming.discard()
+            self._incoming = None
+
+    def _read_payload(self, size):
+        if size > self._unread:
+            raise ProtocolError("payload shorter than expected")
+        data = self.recv_exact(size)
+        self._unread -= size
+        return data
+
+    def _skip_unread(self):
+        while self._unread:
+            self._read_payload(min(self._unread, RECV_CHUNK_SIZE))
 
     def _recv_header(self):
         first = self._sock.recv(REQUEST_HEADER.size)

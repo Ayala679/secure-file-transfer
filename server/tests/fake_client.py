@@ -3,9 +3,19 @@ import socket
 import struct
 import sys
 
+from Crypto.Cipher import AES, PKCS1_OAEP
+from Crypto.PublicKey import RSA
+from Crypto.Util.Padding import pad
+
 CLIENT_VERSION = 3
 REQUEST_HEADER = struct.Struct("<16sBHI")
 RESPONSE_HEADER = struct.Struct("<BHI")
+FILE_PACKET = struct.Struct("<IIHH255s")
+FILE_RECEIVED = struct.Struct("<16sI255sI")
+
+
+def encrypt_file(aes_key, data):
+    return AES.new(aes_key, AES.MODE_CBC, iv=bytes(16)).encrypt(pad(data, 16))
 
 
 def name_field(name):
@@ -61,10 +71,38 @@ class FakeClient:
         _, code, payload = self.request(827, name_field(name))
         return code, payload
 
+    def setup(self, name, rsa_key):
+        """Register + key exchange, returns the AES key."""
+        self.register(name)
+        code, payload = self.send_public_key(name, rsa_key.public_key().export_key("DER"))
+        if code != 1602:
+            raise RuntimeError(f"key exchange failed with {code}")
+        return PKCS1_OAEP.new(rsa_key).decrypt(payload[16:])
+
+    def send_packets(self, file_name, encrypted, orig_size, chunk_size):
+        total = max(1, -(-len(encrypted) // chunk_size))
+        for i in range(total):
+            chunk = encrypted[i * chunk_size:(i + 1) * chunk_size]
+            header = FILE_PACKET.pack(len(encrypted), orig_size, i + 1, total, name_field(file_name))
+            self.send(828, header + chunk)
+
+    def send_file(self, file_name, data, aes_key, chunk_size=64 * 1024):
+        self.send_packets(file_name, encrypt_file(aes_key, data), len(data), chunk_size)
+        _, code, payload = self.receive()
+        if code == 1603:
+            cid, size, name, crc = FILE_RECEIVED.unpack(payload)
+            return code, (cid, size, name.split(b"\0")[0].decode(), crc)
+        return code, payload
+
 
 if __name__ == "__main__":
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 1234
     name = sys.argv[2] if len(sys.argv) > 2 else "test-user"
+    path = sys.argv[3] if len(sys.argv) > 3 else None
     with FakeClient("127.0.0.1", port) as client:
-        code, payload = client.register(name)
-        print(f"register '{name}': code {code}, client id {payload.hex() or '-'}")
+        aes_key = client.setup(name, RSA.generate(1024, e=17))
+        print(f"registered '{name}' as {client.client_id.hex()}, got AES key")
+        if path:
+            with open(path, "rb") as f:
+                code, info = client.send_file(path.replace("\\", "/").split("/")[-1], f.read(), aes_key)
+            print(f"send file: code {code}, server cksum {info[3] if code == 1603 else '-'}")

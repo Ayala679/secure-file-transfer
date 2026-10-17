@@ -74,7 +74,7 @@ class SessionTest(unittest.TestCase):
         self.assertTrue(self.h.is_closed())
 
     def test_bad_payload_size(self):
-        self.h.session._handlers[1] = (lambda header, payload: None, 10)
+        self.h.session._handlers[1] = (lambda header, payload: None, 10, 10)
         self.h.start()
         self.h.send(1, payload_size=0xFFFFFFFF)
         self.assertEqual(self.h.recv_response()[1], ResponseCode.GENERAL_ERROR)
@@ -82,7 +82,7 @@ class SessionTest(unittest.TestCase):
 
     def test_handler_called_and_session_continues(self):
         calls = []
-        self.h.session._handlers[1] = (lambda header, payload: calls.append(payload), 3)
+        self.h.session._handlers[1] = (lambda header, payload: calls.append(payload), 3, 3)
         self.h.start()
         self.h.send(1, b"abc")
         self.h.send(1, b"xyz")
@@ -92,7 +92,7 @@ class SessionTest(unittest.TestCase):
 
     def test_header_split_in_pieces(self):
         calls = []
-        self.h.session._handlers[1] = (lambda header, payload: calls.append(payload), 2)
+        self.h.session._handlers[1] = (lambda header, payload: calls.append(payload), 2, 2)
         self.h.start()
         raw = REQUEST_HEADER.pack(bytes(16), 3, 1, 2) + b"ok"
         for b in raw:
