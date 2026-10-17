@@ -94,5 +94,42 @@ class PublicKeyEndToEndTest(unittest.TestCase):
         self.assertNotEqual(decrypt(first[16:]), decrypt(second[16:]))
 
 
+class ReconnectEndToEndTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.rsa = RSA.generate(1024, e=17)
+        cls.public_der = cls.rsa.public_key().export_key("DER")
+
+    def test_reconnect_on_new_connection(self):
+        with connect() as c:
+            c.register("rc-user")
+            c.send_public_key("rc-user", self.public_der)
+            client_id = c.client_id
+        with connect() as c:
+            c.client_id = client_id
+            code, payload = c.reconnect("rc-user")
+        self.assertEqual(code, 1605)
+        self.assertEqual(payload[:16], client_id)
+        aes_key = PKCS1_OAEP.new(self.rsa).decrypt(payload[16:])
+        self.assertEqual(server_store().get(client_id).aes_key, aes_key)
+
+    def test_unknown_name(self):
+        with connect() as c:
+            c.client_id = b"\x02" * 16
+            self.assertEqual(c.reconnect("rc-nobody"), (1606, b"\x02" * 16))
+
+    def test_registered_without_public_key(self):
+        with connect() as c:
+            c.register("rc-nokey")
+            self.assertEqual(c.reconnect("rc-nokey"), (1606, c.client_id))
+
+    def test_wrong_client_id(self):
+        with connect() as c:
+            c.register("rc-owner")
+            c.send_public_key("rc-owner", self.public_der)
+            c.client_id = b"\x03" * 16
+            self.assertEqual(c.reconnect("rc-owner")[0], 1606)
+
+
 if __name__ == "__main__":
     unittest.main()

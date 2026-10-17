@@ -57,6 +57,10 @@ class FakeClient:
         _, code, payload = self.request(826, name_field(name) + public_key_der)
         return code, payload
 
+    def reconnect(self, name):
+        _, code, payload = self.request(827, name_field(name))
+        return code, payload
+
 
 if __name__ == "__main__":
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 1234

@@ -36,6 +36,7 @@ class ClientSession:
         self._handlers = {
             RequestCode.REGISTER: (self._handle_register, NAME_SIZE),
             RequestCode.PUBLIC_KEY: (self._handle_public_key, PUBLIC_KEY_PAYLOAD_SIZE),
+            RequestCode.RECONNECT: (self._handle_reconnect, NAME_SIZE),
         }
 
     def run(self):
@@ -116,6 +117,23 @@ class ClientSession:
 
         logger.info("[%s] got public key from '%s', sending AES key", self._peer, name)
         self._send(ResponseCode.AES_KEY, aes_key_payload(header.client_id, encrypted_key))
+
+    def _handle_reconnect(self, header, payload):
+        try:
+            name = parse_name_payload(payload)
+            record = self._known_client(header.client_id, name)
+            if record.public_key is None:
+                raise ProtocolError("client has no public key")
+            aes_key = generate_aes_key()
+            encrypted_key = encrypt_aes_key(record.public_key, aes_key)
+        except (ProtocolError, CryptoError) as e:
+            logger.warning("[%s] reconnect rejected: %s", self._peer, e)
+            self._send(ResponseCode.RECONNECT_DENIED, client_id_payload(header.client_id))
+            return
+
+        self._store.set_aes_key(header.client_id, aes_key)
+        logger.info("[%s] '%s' reconnected, sending new AES key", self._peer, name)
+        self._send(ResponseCode.RECONNECT_OK, aes_key_payload(header.client_id, encrypted_key))
 
     def _recv_header(self):
         first = self._sock.recv(REQUEST_HEADER.size)
