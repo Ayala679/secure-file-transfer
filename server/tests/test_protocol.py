@@ -7,6 +7,8 @@ from protocol import (
     RequestCode,
     ResponseCode,
     build_response,
+    decode_name,
+    encode_name,
     parse_request_header,
 )
 
@@ -71,6 +73,46 @@ class HeaderTest(unittest.TestCase):
     def test_response_bad_code(self):
         with self.assertRaises(struct.error):
             build_response(70000)
+
+
+class NameFieldTest(unittest.TestCase):
+    def field(self, raw):
+        return raw.ljust(255, b"\0")
+
+    def test_regular_name(self):
+        self.assertEqual(decode_name(self.field(b"Michael Jackson")), "Michael Jackson")
+
+    def test_max_length(self):
+        name = "a" * 254
+        self.assertEqual(decode_name(encode_name(name)), name)
+
+    def test_garbage_after_null_ignored(self):
+        self.assertEqual(decode_name(self.field(b"file.txt\0junk")), "file.txt")
+
+    def test_encode_pads_with_zeros(self):
+        raw = encode_name("abc")
+        self.assertEqual(len(raw), 255)
+        self.assertEqual(raw[:4], b"abc\0")
+        self.assertEqual(raw[3:], bytes(252))
+
+    def test_rejected_fields(self):
+        bad = [
+            b"a" * 255,
+            bytes(255),
+            self.field("שלום".encode()),
+            self.field(b"a\nb"),
+            b"abc\0",
+            b"a" * 256,
+        ]
+        for raw in bad:
+            with self.subTest(raw=raw[:10]), self.assertRaises(ProtocolError):
+                decode_name(raw)
+
+    def test_encode_rejects(self):
+        with self.assertRaises(ProtocolError):
+            encode_name("a" * 255)
+        with self.assertRaises(UnicodeEncodeError):
+            encode_name("שלום")
 
 
 if __name__ == "__main__":

@@ -53,6 +53,32 @@ def parse_request_header(data):
     return RequestHeader(*REQUEST_HEADER.unpack(data))
 
 
+def _is_printable_ascii(raw):
+    return all(0x20 <= b < 0x7F for b in raw)
+
+
+# fixed 255 byte field, must contain a terminating null
+def decode_name(field):
+    if len(field) != NAME_SIZE:
+        raise ProtocolError(f"name field must be {NAME_SIZE} bytes")
+    end = field.find(b"\0")
+    if end == -1:
+        raise ProtocolError("name is not null terminated")
+    raw = field[:end]
+    if not raw:
+        raise ProtocolError("empty name")
+    if not _is_printable_ascii(raw):
+        raise ProtocolError("name has invalid characters")
+    return raw.decode("ascii")
+
+
+def encode_name(text):
+    raw = text.encode("ascii")
+    if len(raw) >= NAME_SIZE:
+        raise ProtocolError("name too long")
+    return raw.ljust(NAME_SIZE, b"\0")
+
+
 def build_response(code, payload=b""):
     if len(payload) > MAX_PAYLOAD_SIZE:
         raise ProtocolError("payload too large")
