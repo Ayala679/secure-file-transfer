@@ -3,6 +3,7 @@ from enum import IntEnum
 from typing import NamedTuple
 
 SERVER_VERSION = 3
+CLIENT_VERSION = 3
 
 CLIENT_ID_SIZE = 16
 NAME_SIZE = 255

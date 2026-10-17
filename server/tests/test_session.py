@@ -133,6 +133,11 @@ class RegisterTest(unittest.TestCase):
         self.h.send(RequestCode.REGISTER, b"x" * 255)
         self.assertEqual(self.h.recv_response()[1], ResponseCode.REGISTER_FAILED)
 
+    def test_other_client_version_accepted(self):
+        self.h.client.sendall(REQUEST_HEADER.pack(bytes(16), 2, RequestCode.REGISTER, 255)
+                              + encode_name("old-client"))
+        self.assertEqual(self.h.recv_response()[1], ResponseCode.REGISTER_OK)
+
     def test_client_id_ignored(self):
         self.h.send(RequestCode.REGISTER, encode_name("Ayala"), client_id=b"\xff" * 16)
         payload = self.h.recv_response()[2]

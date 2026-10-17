@@ -1,5 +1,6 @@
 import logging
 import socket
+import threading
 
 from client_store import ClientStore
 from config import read_port
@@ -14,14 +15,17 @@ logger = logging.getLogger("server")
 
 class Server:
     def __init__(self, port):
-        self._port = port
+        self.port = port
+        self.ready = threading.Event()
         self._store = ClientStore()
 
     def serve_forever(self):
-        with socket.create_server(("", self._port), backlog=LISTEN_BACKLOG) as listener:
+        with socket.create_server(("", self.port), backlog=LISTEN_BACKLOG) as listener:
             # short accept timeout so Ctrl+C works on Windows
             listener.settimeout(ACCEPT_POLL_INTERVAL)
-            logger.info("server version 3 listening on port %d", self._port)
+            self.port = listener.getsockname()[1]
+            self.ready.set()
+            logger.info("server version 3 listening on port %d", self.port)
             while True:
                 try:
                     conn, address = listener.accept()

@@ -3,6 +3,7 @@ import logging
 from client_store import NameTakenError, StoreError
 from crypto_utils import CryptoError
 from protocol import (
+    CLIENT_VERSION,
     NAME_SIZE,
     REQUEST_HEADER,
     ProtocolError,
@@ -54,6 +55,9 @@ class ClientSession:
             return False
         header = parse_request_header(raw)
         logger.info("[%s] request %d, payload %d bytes", self._peer, header.code, header.payload_size)
+        if header.version != CLIENT_VERSION:
+            logger.warning("[%s] client version %d, expected %d - continuing",
+                           self._peer, header.version, CLIENT_VERSION)
 
         entry = self._handlers.get(header.code)
         if entry is None:
