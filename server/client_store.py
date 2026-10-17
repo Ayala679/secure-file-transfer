@@ -43,7 +43,7 @@ class ClientStore:
     def register(self, name):
         with self._lock:
             if name in self._ids_by_name:
-                raise NameTakenError(name)
+                raise NameTakenError(f"name '{name}' is already registered")
             client_id = uuid.uuid4().bytes
             while client_id in self._clients:
                 client_id = uuid.uuid4().bytes

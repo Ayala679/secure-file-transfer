@@ -4,7 +4,13 @@ import threading
 import unittest
 
 from client_store import ClientStore
-from protocol import REQUEST_HEADER, RESPONSE_HEADER, ResponseCode
+from protocol import (
+    REQUEST_HEADER,
+    RESPONSE_HEADER,
+    RequestCode,
+    ResponseCode,
+    encode_name,
+)
 from session import ClientSession
 
 
@@ -101,6 +107,36 @@ class SessionTest(unittest.TestCase):
         self.h.client.shutdown(socket.SHUT_WR)
         self.h.thread.join(5)
         self.assertFalse(self.h.thread.is_alive())
+
+
+class RegisterTest(unittest.TestCase):
+    def setUp(self):
+        self.h = SessionHarness().start()
+
+    def tearDown(self):
+        self.h.stop()
+
+    def test_register_ok(self):
+        self.h.send(RequestCode.REGISTER, encode_name("Ayala"))
+        version, code, payload = self.h.recv_response()
+        self.assertEqual((version, code), (3, ResponseCode.REGISTER_OK))
+        self.assertEqual(len(payload), 16)
+        self.assertEqual(self.h.store.get(payload).name, "Ayala")
+
+    def test_duplicate_name(self):
+        self.h.send(RequestCode.REGISTER, encode_name("Ayala"))
+        self.h.recv_response()
+        self.h.send(RequestCode.REGISTER, encode_name("Ayala"))
+        self.assertEqual(self.h.recv_response(), (3, ResponseCode.REGISTER_FAILED, b""))
+
+    def test_bad_name_field(self):
+        self.h.send(RequestCode.REGISTER, b"x" * 255)
+        self.assertEqual(self.h.recv_response()[1], ResponseCode.REGISTER_FAILED)
+
+    def test_client_id_ignored(self):
+        self.h.send(RequestCode.REGISTER, encode_name("Ayala"), client_id=b"\xff" * 16)
+        payload = self.h.recv_response()[2]
+        self.assertNotEqual(payload, b"\xff" * 16)
 
 
 if __name__ == "__main__":

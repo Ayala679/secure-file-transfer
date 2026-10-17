@@ -1,12 +1,16 @@
 import logging
 
-from client_store import StoreError
+from client_store import NameTakenError, StoreError
 from crypto_utils import CryptoError
 from protocol import (
+    NAME_SIZE,
     REQUEST_HEADER,
     ProtocolError,
+    RequestCode,
     ResponseCode,
     build_response,
+    client_id_payload,
+    parse_name_payload,
     parse_request_header,
 )
 
@@ -25,7 +29,9 @@ class ClientSession:
         self._store = store
         self._peer = f"{address[0]}:{address[1]}"
         # code -> (handler, exact payload size)
-        self._handlers = {}
+        self._handlers = {
+            RequestCode.REGISTER: (self._handle_register, NAME_SIZE),
+        }
 
     def run(self):
         logger.info("[%s] connected", self._peer)
@@ -70,6 +76,17 @@ class ClientSession:
             logger.warning("[%s] request %d failed: %s", self._peer, header.code, e)
             self._send(ResponseCode.GENERAL_ERROR)
         return True
+
+    def _handle_register(self, header, payload):
+        try:
+            name = parse_name_payload(payload)
+            record = self._store.register(name)
+        except (ProtocolError, NameTakenError) as e:
+            logger.warning("[%s] registration failed: %s", self._peer, e)
+            self._send(ResponseCode.REGISTER_FAILED)
+            return
+        logger.info("[%s] registered '%s' as %s", self._peer, name, record.client_id.hex())
+        self._send(ResponseCode.REGISTER_OK, client_id_payload(record.client_id))
 
     def _recv_header(self):
         first = self._sock.recv(REQUEST_HEADER.size)
