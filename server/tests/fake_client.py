@@ -79,6 +79,15 @@ class FakeClient:
             raise RuntimeError(f"key exchange failed with {code}")
         return PKCS1_OAEP.new(rsa_key).decrypt(payload[16:])
 
+    def crc_ok(self, file_name):
+        return self.request(900, name_field(file_name))[1:]
+
+    def crc_retry(self, file_name):
+        self.send(901, name_field(file_name))
+
+    def crc_abort(self, file_name):
+        return self.request(902, name_field(file_name))[1:]
+
     def send_packets(self, file_name, encrypted, orig_size, chunk_size):
         total = max(1, -(-len(encrypted) // chunk_size))
         for i in range(total):

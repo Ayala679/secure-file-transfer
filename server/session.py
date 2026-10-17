@@ -51,6 +51,9 @@ class ClientSession:
             RequestCode.RECONNECT: (self._handle_reconnect, NAME_SIZE, NAME_SIZE),
             RequestCode.SEND_FILE: (self._handle_file_packet, FILE_PACKET_HEADER.size,
                                     FILE_PACKET_HEADER.size + MAX_CONTENT_SIZE),
+            RequestCode.CRC_OK: (self._handle_crc_ok, NAME_SIZE, NAME_SIZE),
+            RequestCode.CRC_RETRY: (self._handle_crc_retry, NAME_SIZE, NAME_SIZE),
+            RequestCode.CRC_ABORT: (self._handle_crc_abort, NAME_SIZE, NAME_SIZE),
         }
         # these handlers read their own payload from the socket
         self._streamed = {RequestCode.SEND_FILE}
@@ -208,6 +211,37 @@ class ClientSession:
                     relative_path, cksum)
         self._send(ResponseCode.FILE_RECEIVED, file_received_payload(
             header.client_id, packet.content_size, packet.file_name, cksum))
+
+    def _received_file(self, header, payload):
+        file_name = parse_name_payload(payload)
+        if self._store.get(header.client_id) is None:
+            raise ProtocolError(f"unknown client id {header.client_id.hex()}")
+        record = self._store.get_file(header.client_id, file_name)
+        if record is None:
+            raise ProtocolError(f"no received file named '{file_name}'")
+        return record
+
+    def _handle_crc_ok(self, header, payload):
+        record = self._received_file(header, payload)
+        self._store.set_verified(header.client_id, record.file_name, True)
+        logger.info("[%s] '%s' verified by client", self._peer, record.file_name)
+        self._send(ResponseCode.ACK, client_id_payload(header.client_id))
+
+    def _handle_crc_retry(self, header, payload):
+        # no response here, the client sends the file again right away
+        try:
+            record = self._received_file(header, payload)
+        except ProtocolError as e:
+            logger.warning("[%s] ignoring CRC retry: %s", self._peer, e)
+            return
+        logger.info("[%s] CRC mismatch on '%s', waiting for resend", self._peer, record.file_name)
+
+    def _handle_crc_abort(self, header, payload):
+        record = self._received_file(header, payload)
+        (self._files_dir.parent / record.path).unlink(missing_ok=True)
+        self._store.remove_file(header.client_id, record.file_name)
+        logger.warning("[%s] client gave up on '%s', file deleted", self._peer, record.file_name)
+        self._send(ResponseCode.ACK, client_id_payload(header.client_id))
 
     def _drop_incoming(self):
         if self._incoming is not None:

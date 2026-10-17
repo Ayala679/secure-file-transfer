@@ -3,6 +3,7 @@ import os
 import tempfile
 import threading
 import unittest
+import uuid
 from pathlib import Path
 
 from Crypto.Cipher import PKCS1_OAEP
@@ -141,21 +142,23 @@ class ReconnectEndToEndTest(unittest.TestCase):
             self.assertEqual(c.reconnect("rc-owner")[0], 1606)
 
 
-class FileTransferEndToEndTest(unittest.TestCase):
+class FileClientMixin:
     @classmethod
     def setUpClass(cls):
         cls.rsa = RSA.generate(1024, e=17)
-        cls.counter = 0
 
     def new_client(self):
-        FileTransferEndToEndTest.counter += 1
         c = connect()
         self.addCleanup(c.close)
-        aes_key = c.setup(f"ft-user-{self.counter}", self.rsa)
+        self.user_name = f"user-{uuid.uuid4().hex[:12]}"
+        aes_key = c.setup(self.user_name, self.rsa)
         return c, aes_key
 
     def saved(self, client, name):
         return files_dir() / client.client_id.hex() / name
+
+
+class FileTransferEndToEndTest(FileClientMixin, unittest.TestCase):
 
     def check_transfer(self, data, chunk_size, name="data.bin"):
         c, aes_key = self.new_client()
@@ -213,7 +216,7 @@ class FileTransferEndToEndTest(unittest.TestCase):
         c.send(828, first + enc[:2000])
         c.send(828, second + enc[2000:])
         self.assertEqual(c.receive()[1], 1607)
-        self.assertEqual(c.reconnect(f"ft-user-{self.counter}")[0], 1605)
+        self.assertEqual(c.reconnect(self.user_name)[0], 1605)
 
     def test_content_size_not_block_multiple(self):
         c, _ = self.new_client()
@@ -232,6 +235,42 @@ class FileTransferEndToEndTest(unittest.TestCase):
         self.assertEqual(c.send_file("again.bin", data, aes_key)[0], 1603)
         self.assertEqual(c.send_file("again.bin", data, aes_key)[0], 1603)
         self.assertEqual(self.saved(c, "again.bin").read_bytes(), data)
+
+
+class CrcResultEndToEndTest(FileClientMixin, unittest.TestCase):
+    def send(self, name="f.bin", data=b"some file data"):
+        c, aes_key = self.new_client()
+        self.assertEqual(c.send_file(name, data, aes_key)[0], 1603)
+        return c, aes_key
+
+    def test_crc_ok(self):
+        c, _ = self.send()
+        self.assertEqual(c.crc_ok("f.bin"), (1604, c.client_id))
+        self.assertTrue(server_store().get_file(c.client_id, "f.bin").verified)
+
+    def test_retry_then_ok(self):
+        c, aes_key = self.send()
+        c.crc_retry("f.bin")
+        self.assertEqual(c.send_file("f.bin", b"some file data", aes_key)[0], 1603)
+        self.assertEqual(c.crc_ok("f.bin"), (1604, c.client_id))
+
+    def test_three_retries_then_abort(self):
+        c, aes_key = self.send()
+        for _ in range(3):
+            c.crc_retry("f.bin")
+            self.assertEqual(c.send_file("f.bin", b"some file data", aes_key)[0], 1603)
+        self.assertEqual(c.crc_abort("f.bin"), (1604, c.client_id))
+        self.assertFalse(self.saved(c, "f.bin").exists())
+        self.assertIsNone(server_store().get_file(c.client_id, "f.bin"))
+
+    def test_crc_ok_for_unknown_file(self):
+        c, _ = self.send()
+        self.assertEqual(c.crc_ok("other.bin"), (1607, b""))
+
+    def test_retry_for_unknown_file_is_silent(self):
+        c, _ = self.send()
+        c.crc_retry("other.bin")
+        self.assertEqual(c.crc_ok("f.bin"), (1604, c.client_id))
 
 
 if __name__ == "__main__":
