@@ -33,7 +33,6 @@ def encrypt_aes_key(public_key_der, aes_key):
 
 
 class AesCbcDecryptor:
-    # The last block is held back until finish() since it carries the padding
     def __init__(self, key):
         if len(key) != AES_KEY_SIZE:
             raise CryptoError("bad AES key size")
