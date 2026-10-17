@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.pyc
+.ruff_cache/
+.venv/
+
+# Server runtime data
+server/received_files/
+*.db
+
+# Client runtime data (contain keys – never commit)
+me.info
+priv.key
+
+# Visual Studio build output
+.vs/
+x64/
+Debug/
+Release/
+ARM64/
+*.user
+*.obj
+*.pdb
+*.ilk
+*.exe
+*.log
+*.tlog
+
+# Submission archive
+*.zip
