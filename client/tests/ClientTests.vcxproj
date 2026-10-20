@@ -64,6 +64,8 @@
     <ClCompile Include="..\src\RsaWrapper.cpp" />
     <ClCompile Include="..\src\AesWrapper.cpp" />
     <ClCompile Include="..\src\TransferConfig.cpp" />
+    <ClCompile Include="..\src\TcpConnection.cpp" />
+    <ClCompile Include="NetworkTests.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="TestFramework.h" />
@@ -80,6 +82,7 @@
     <ClInclude Include="..\src\RsaWrapper.h" />
     <ClInclude Include="..\src\AesWrapper.h" />
     <ClInclude Include="..\src\TransferConfig.h" />
+    <ClInclude Include="..\src\TcpConnection.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
 </Project>

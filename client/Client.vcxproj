@@ -65,6 +65,8 @@
     <ClCompile Include="src\RsaWrapper.cpp" />
     <ClCompile Include="src\AesWrapper.cpp" />
     <ClCompile Include="src\TransferConfig.cpp" />
+    <ClCompile Include="src\TcpConnection.cpp" />
+    <ClCompile Include="src\FileTransferClient.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\Cksum.h" />
@@ -78,6 +80,8 @@
     <ClInclude Include="src\RsaWrapper.h" />
     <ClInclude Include="src\AesWrapper.h" />
     <ClInclude Include="src\TransferConfig.h" />
+    <ClInclude Include="src\TcpConnection.h" />
+    <ClInclude Include="src\FileTransferClient.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
 </Project>
