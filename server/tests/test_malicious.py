@@ -83,7 +83,9 @@ class MaliciousInputTest(unittest.TestCase):
     def test_declared_content_size_over_limit(self):
         with connect() as c:
             c.setup(unique("big"), rsa)
-            header = FILE_PACKET.pack(0xFFFFFFF0, 1, 1, 1, name_field("big.bin"))
+            header = FILE_PACKET.pack(
+                0xFFFFFFF0, 1, 1, 1, name_field("big.bin")
+            )
             c.send(828, header + bytes(16))
             self.assertEqual(c.receive()[1], 1607)
 
@@ -119,8 +121,15 @@ class MaliciousInputTest(unittest.TestCase):
         with connect() as c:
             aes_key = c.setup(unique("cut"), rsa)
             enc = encrypt_file(aes_key, os.urandom(50_000))
-            header = FILE_PACKET.pack(len(enc), 50_000, 1, 1, name_field("cut.bin"))
-            c.sock.sendall(REQUEST_HEADER.pack(c.client_id, 3, 828, len(header) + len(enc)) + header)
+            header = FILE_PACKET.pack(
+                len(enc), 50_000, 1, 1, name_field("cut.bin")
+            )
+            c.sock.sendall(
+                REQUEST_HEADER.pack(
+                    c.client_id, 3, 828, len(header) + len(enc)
+                )
+                + header
+            )
             c.sock.sendall(enc[:10_000])
             folder = files_root / c.client_id.hex()
             self.assertTrue(wait_for(lambda: any(folder.glob("*.enc"))))

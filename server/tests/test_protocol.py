@@ -28,11 +28,14 @@ class ConstantsTest(unittest.TestCase):
         self.assertEqual(protocol.SERVER_VERSION, 3)
 
     def test_request_codes(self):
-        self.assertEqual([c.value for c in RequestCode],
-                         [825, 826, 827, 828, 900, 901, 902])
+        self.assertEqual(
+            [c.value for c in RequestCode], [825, 826, 827, 828, 900, 901, 902]
+        )
 
     def test_response_codes(self):
-        self.assertEqual([c.value for c in ResponseCode], list(range(1600, 1608)))
+        self.assertEqual(
+            [c.value for c in ResponseCode], list(range(1600, 1608))
+        )
 
     def test_code_name(self):
         self.assertEqual(protocol.code_name(825), "825 REGISTER")
@@ -50,7 +53,12 @@ class HeaderTest(unittest.TestCase):
     CLIENT_ID = bytes(range(16))
 
     def test_parse_request_header(self):
-        raw = self.CLIENT_ID + bytes([3]) + bytes.fromhex("3903") + bytes.fromhex("ff000000")
+        raw = (
+            self.CLIENT_ID
+            + bytes([3])
+            + bytes.fromhex("3903")
+            + bytes.fromhex("ff000000")
+        )
         header = parse_request_header(raw)
         self.assertEqual(header.client_id, self.CLIENT_ID)
         self.assertEqual(header.version, 3)
@@ -59,13 +67,19 @@ class HeaderTest(unittest.TestCase):
 
     def test_request_roundtrip(self):
         raw = protocol.REQUEST_HEADER.pack(self.CLIENT_ID, 3, 828, 123456)
-        self.assertEqual(tuple(parse_request_header(raw)), (self.CLIENT_ID, 3, 828, 123456))
+        self.assertEqual(
+            tuple(parse_request_header(raw)), (self.CLIENT_ID, 3, 828, 123456)
+        )
 
     def test_max_values(self):
-        raw = protocol.REQUEST_HEADER.pack(self.CLIENT_ID, 255, 0xFFFF, 0xFFFFFFFF)
+        raw = protocol.REQUEST_HEADER.pack(
+            self.CLIENT_ID, 255, 0xFFFF, 0xFFFFFFFF
+        )
         header = parse_request_header(raw)
-        self.assertEqual((header.version, header.code, header.payload_size),
-                         (255, 0xFFFF, 0xFFFFFFFF))
+        self.assertEqual(
+            (header.version, header.code, header.payload_size),
+            (255, 0xFFFF, 0xFFFFFFFF),
+        )
 
     def test_bad_header_length(self):
         for size in (0, 22, 24):
@@ -79,7 +93,10 @@ class HeaderTest(unittest.TestCase):
         self.assertEqual(raw[7:], payload)
 
     def test_build_response_empty(self):
-        self.assertEqual(build_response(ResponseCode.GENERAL_ERROR).hex(), "03" + "4706" + "00000000")
+        self.assertEqual(
+            build_response(ResponseCode.GENERAL_ERROR).hex(),
+            "03" + "4706" + "00000000",
+        )
 
     def test_response_bad_code(self):
         with self.assertRaises(struct.error):
@@ -91,14 +108,18 @@ class NameFieldTest(unittest.TestCase):
         return raw.ljust(255, b"\0")
 
     def test_regular_name(self):
-        self.assertEqual(decode_name(self.field(b"Michael Jackson")), "Michael Jackson")
+        self.assertEqual(
+            decode_name(self.field(b"Michael Jackson")), "Michael Jackson"
+        )
 
     def test_max_length(self):
         name = "a" * 254
         self.assertEqual(decode_name(encode_name(name)), name)
 
     def test_garbage_after_null_ignored(self):
-        self.assertEqual(decode_name(self.field(b"file.txt\0junk")), "file.txt")
+        self.assertEqual(
+            decode_name(self.field(b"file.txt\0junk")), "file.txt"
+        )
 
     def test_encode_pads_with_zeros(self):
         raw = encode_name("abc")
@@ -144,22 +165,31 @@ class PayloadTest(unittest.TestCase):
             parse_public_key_payload(payload[:-1])
 
     def test_file_packet_header(self):
-        raw = (bytes.fromhex("10000000") + bytes.fromhex("05000000")
-               + bytes.fromhex("0100") + bytes.fromhex("0300") + encode_name("a.bin"))
+        raw = (
+            bytes.fromhex("10000000")
+            + bytes.fromhex("05000000")
+            + bytes.fromhex("0100")
+            + bytes.fromhex("0300")
+            + encode_name("a.bin")
+        )
         self.assertEqual(len(raw), 267)
         header = parse_file_packet_header(raw)
         self.assertEqual(tuple(header), (16, 5, 1, 3, "a.bin"))
 
     def test_file_packet_bad_numbering(self):
         for packet, total in ((1, 0), (4, 3)):
-            raw = protocol.FILE_PACKET_HEADER.pack(16, 5, packet, total, encode_name("a"))
+            raw = protocol.FILE_PACKET_HEADER.pack(
+                16, 5, packet, total, encode_name("a")
+            )
             with self.assertRaises(ProtocolError):
                 parse_file_packet_header(raw)
 
     def test_response_payload_sizes(self):
         self.assertEqual(len(client_id_payload(self.CLIENT_ID)), 16)
         self.assertEqual(len(aes_key_payload(self.CLIENT_ID, bytes(128))), 144)
-        self.assertEqual(len(file_received_payload(self.CLIENT_ID, 16, "a.bin", 1)), 279)
+        self.assertEqual(
+            len(file_received_payload(self.CLIENT_ID, 16, "a.bin", 1)), 279
+        )
 
     def test_file_received_bytes(self):
         raw = file_received_payload(self.CLIENT_ID, 0x20, "x", 0x01020304)

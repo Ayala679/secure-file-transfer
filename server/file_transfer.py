@@ -10,24 +10,36 @@ AES_BLOCK_SIZE = 16
 MAX_CONTENT_SIZE = 1 << 30
 COPY_CHUNK_SIZE = 64 * 1024
 FORBIDDEN_CHARS = set('<>:"|?*')
-WINDOWS_RESERVED = {"CON", "PRN", "AUX", "NUL",
-                    *(f"COM{i}" for i in range(1, 10)),
-                    *(f"LPT{i}" for i in range(1, 10))}
+WINDOWS_RESERVED = {
+    "CON",
+    "PRN",
+    "AUX",
+    "NUL",
+    *(f"COM{i}" for i in range(1, 10)),
+    *(f"LPT{i}" for i in range(1, 10)),
+}
 
 
 def safe_file_name(name):
     # keep only the last path component, never trust client paths
     base = name.replace("\\", "/").rsplit("/", 1)[-1].rstrip(" .")
-    if (not base or base in (".", "..")
-            or any(c in FORBIDDEN_CHARS for c in base)
-            or base.split(".")[0].upper() in WINDOWS_RESERVED):
+    if (
+        not base
+        or base in (".", "..")
+        or any(c in FORBIDDEN_CHARS for c in base)
+        or base.split(".")[0].upper() in WINDOWS_RESERVED
+    ):
         raise ProtocolError(f"unsafe file name '{name}'")
     return base
 
 
 def same_file(a, b):
-    return ((a.content_size, a.orig_size, a.total_packets, a.file_name)
-            == (b.content_size, b.orig_size, b.total_packets, b.file_name))
+    return (a.content_size, a.orig_size, a.total_packets, a.file_name) == (
+        b.content_size,
+        b.orig_size,
+        b.total_packets,
+        b.file_name,
+    )
 
 
 def _remove_quietly(path):
@@ -70,7 +82,9 @@ class IncomingFile:
         decryptor = AesCbcDecryptor(aes_key)
         crc = Cksum()
         plain_size = 0
-        fd, part_path = tempfile.mkstemp(dir=self.target.parent, suffix=".part")
+        fd, part_path = tempfile.mkstemp(
+            dir=self.target.parent, suffix=".part"
+        )
         try:
             with open(self._enc_path, "rb") as src, os.fdopen(fd, "wb") as dst:
                 while chunk := src.read(COPY_CHUNK_SIZE):

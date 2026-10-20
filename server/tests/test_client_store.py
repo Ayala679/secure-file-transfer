@@ -18,7 +18,9 @@ class ClientStoreTest(unittest.TestCase):
         rec = self.store.register("Ayala")
         self.assertEqual(len(rec.client_id), 16)
         self.assertEqual(self.store.get(rec.client_id).name, "Ayala")
-        self.assertEqual(self.store.find_by_name("Ayala").client_id, rec.client_id)
+        self.assertEqual(
+            self.store.find_by_name("Ayala").client_id, rec.client_id
+        )
 
     def test_duplicate_name(self):
         self.store.register("Ayala")
@@ -47,11 +49,15 @@ class ClientStoreTest(unittest.TestCase):
         rec = self.store.register("Ayala")
         before = self.store.get(rec.client_id).last_seen
         self.store.touch(rec.client_id)
-        self.assertGreaterEqual(self.store.get(rec.client_id).last_seen, before)
+        self.assertGreaterEqual(
+            self.store.get(rec.client_id).last_seen, before
+        )
 
     def test_files(self):
         cid = self.store.register("Ayala").client_id
-        self.store.save_file(FileRecord(cid, "a.bin", "received_files/x/a.bin"))
+        self.store.save_file(
+            FileRecord(cid, "a.bin", "received_files/x/a.bin")
+        )
         self.assertFalse(self.store.get_file(cid, "a.bin").verified)
         self.store.set_verified(cid, "a.bin", True)
         self.assertTrue(self.store.get_file(cid, "a.bin").verified)

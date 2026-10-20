@@ -103,7 +103,9 @@ def encode_name(text):
 
 def _check_size(payload, expected):
     if len(payload) != expected:
-        raise ProtocolError(f"payload is {len(payload)} bytes, expected {expected}")
+        raise ProtocolError(
+            f"payload is {len(payload)} bytes, expected {expected}"
+        )
 
 
 def parse_name_payload(payload):
@@ -118,10 +120,14 @@ def parse_public_key_payload(payload):
 
 def parse_file_packet_header(data):
     _check_size(data, FILE_PACKET_HEADER.size)
-    content_size, orig_size, packet, total, name = FILE_PACKET_HEADER.unpack(data)
+    content_size, orig_size, packet, total, name = FILE_PACKET_HEADER.unpack(
+        data
+    )
     if total == 0 or packet > total:
         raise ProtocolError(f"bad packet numbering {packet}/{total}")
-    return FilePacketHeader(content_size, orig_size, packet, total, decode_name(name))
+    return FilePacketHeader(
+        content_size, orig_size, packet, total, decode_name(name)
+    )
 
 
 def _check_client_id(client_id):
@@ -141,7 +147,9 @@ def aes_key_payload(client_id, encrypted_key):
 
 def file_received_payload(client_id, content_size, file_name, cksum):
     _check_client_id(client_id)
-    return FILE_RECEIVED.pack(client_id, content_size, encode_name(file_name), cksum)
+    return FILE_RECEIVED.pack(
+        client_id, content_size, encode_name(file_name), cksum
+    )
 
 
 def build_response(code, payload=b""):

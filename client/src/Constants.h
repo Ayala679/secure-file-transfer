@@ -30,6 +30,7 @@ inline constexpr std::size_t FILE_RECEIVED_PAYLOAD_SIZE =
     CLIENT_ID_SIZE + CONTENT_SIZE_FIELD_SIZE + NAME_SIZE + CKSUM_SIZE;
 
 inline constexpr std::size_t MAX_NAME_LENGTH = NAME_SIZE - 1;
+inline constexpr std::size_t MAX_RESPONSE_PAYLOAD_SIZE = FILE_RECEIVED_PAYLOAD_SIZE;
 
 enum class RequestCode : std::uint16_t {
     Register = 825,
@@ -57,6 +58,7 @@ enum class ResponseCode : std::uint16_t {
 namespace crypto {
 
 inline constexpr unsigned RSA_KEY_BITS = 1024;
+inline constexpr std::size_t RSA_CIPHERTEXT_SIZE = RSA_KEY_BITS / 8;
 inline constexpr std::size_t AES_KEY_SIZE = 32;
 inline constexpr std::size_t AES_BLOCK_SIZE = 16;
 

@@ -53,15 +53,37 @@ class ClientSession:
         self._rejected = None
         # code -> (handler, min payload size, max payload size)
         self._handlers = {
-            RequestCode.REGISTER: (self._handle_register, NAME_SIZE, NAME_SIZE),
-            RequestCode.PUBLIC_KEY: (self._handle_public_key, PUBLIC_KEY_PAYLOAD_SIZE,
-                                     PUBLIC_KEY_PAYLOAD_SIZE),
-            RequestCode.RECONNECT: (self._handle_reconnect, NAME_SIZE, NAME_SIZE),
-            RequestCode.SEND_FILE: (self._handle_file_packet, FILE_PACKET_HEADER.size,
-                                    FILE_PACKET_HEADER.size + MAX_CONTENT_SIZE),
+            RequestCode.REGISTER: (
+                self._handle_register,
+                NAME_SIZE,
+                NAME_SIZE,
+            ),
+            RequestCode.PUBLIC_KEY: (
+                self._handle_public_key,
+                PUBLIC_KEY_PAYLOAD_SIZE,
+                PUBLIC_KEY_PAYLOAD_SIZE,
+            ),
+            RequestCode.RECONNECT: (
+                self._handle_reconnect,
+                NAME_SIZE,
+                NAME_SIZE,
+            ),
+            RequestCode.SEND_FILE: (
+                self._handle_file_packet,
+                FILE_PACKET_HEADER.size,
+                FILE_PACKET_HEADER.size + MAX_CONTENT_SIZE,
+            ),
             RequestCode.CRC_OK: (self._handle_crc_ok, NAME_SIZE, NAME_SIZE),
-            RequestCode.CRC_RETRY: (self._handle_crc_retry, NAME_SIZE, NAME_SIZE),
-            RequestCode.CRC_ABORT: (self._handle_crc_abort, NAME_SIZE, NAME_SIZE),
+            RequestCode.CRC_RETRY: (
+                self._handle_crc_retry,
+                NAME_SIZE,
+                NAME_SIZE,
+            ),
+            RequestCode.CRC_ABORT: (
+                self._handle_crc_abort,
+                NAME_SIZE,
+                NAME_SIZE,
+            ),
         }
         # these handlers read their own payload from the socket
         self._streamed = {RequestCode.SEND_FILE}
@@ -72,10 +94,13 @@ class ClientSession:
             while self._serve_one_request():
                 pass
         except ConnectionClosed as e:
-            logger.info("[%s] connection closed %s", self._peer, e or "by client")
+            logger.info(
+                "[%s] connection closed %s", self._peer, e or "by client"
+            )
         except IdleTimeout:
             logger.info("[%s] idle timeout, disconnecting", self._peer)
-        except Exception as e:  # noqa: BLE001 - one bad client must never stop the server
+        # one bad client must never stop the server
+        except Exception as e:  # noqa: BLE001
             logger.error("[%s] unexpected error: %r", self._peer, e)
         finally:
             self._drop_incoming()
@@ -83,7 +108,8 @@ class ClientSession:
             logger.info("[%s] disconnected", self._peer)
 
     def _close_gracefully(self):
-        # closing with unread data makes Windows send RST, which can drop our last response
+        # closing with unread data makes Windows send RST,
+        # which can drop our last response
         try:
             self._sock.shutdown(socket.SHUT_WR)
             self._sock.settimeout(CLOSE_DRAIN_TIMEOUT)
@@ -103,15 +129,25 @@ class ClientSession:
         if raw is None:
             return False
         header = parse_request_header(raw)
-        logger.info("[%s] <- request %s (%d bytes)", self._peer, code_name(header.code),
-                    header.payload_size)
+        logger.info(
+            "[%s] <- request %s (%d bytes)",
+            self._peer,
+            code_name(header.code),
+            header.payload_size,
+        )
         if header.version != CLIENT_VERSION:
-            logger.warning("[%s] client version %d, expected %d - continuing",
-                           self._peer, header.version, CLIENT_VERSION)
+            logger.warning(
+                "[%s] client version %d, expected %d - continuing",
+                self._peer,
+                header.version,
+                CLIENT_VERSION,
+            )
 
         entry = self._handlers.get(header.code)
         if entry is None:
-            logger.warning("[%s] unknown request code %d", self._peer, header.code)
+            logger.warning(
+                "[%s] unknown request code %d", self._peer, header.code
+            )
             self._send(ResponseCode.GENERAL_ERROR)
             return False
 
@@ -119,8 +155,12 @@ class ClientSession:
         handler, min_size, max_size = entry
         if not min_size <= header.payload_size <= max_size:
             # can't trust the rest of the stream after a bad length
-            logger.warning("[%s] bad payload size %d for code %d",
-                           self._peer, header.payload_size, header.code)
+            logger.warning(
+                "[%s] bad payload size %d for code %d",
+                self._peer,
+                header.payload_size,
+                header.code,
+            )
             self._send(ResponseCode.GENERAL_ERROR)
             return False
 
@@ -132,12 +172,17 @@ class ClientSession:
             else:
                 handler(header, self._read_payload(header.payload_size))
         except (ProtocolError, StoreError, CryptoError, OSError) as e:
-            logger.warning("[%s] request %d failed: %s", self._peer, header.code, e)
+            logger.warning(
+                "[%s] request %d failed: %s", self._peer, header.code, e
+            )
             self._drop_incoming()
             self._skip_unread()
             packet = self._packet
-            if packet is not None and packet.packet_number < packet.total_packets:
-                # the client expects one answer per file, so wait for its last packet
+            if (
+                packet is not None
+                and packet.packet_number < packet.total_packets
+            ):
+                # one answer per file, so wait for its last packet
                 self._rejected = packet
             else:
                 self._send(ResponseCode.GENERAL_ERROR)
@@ -151,8 +196,15 @@ class ClientSession:
             logger.warning("[%s] registration failed: %s", self._peer, e)
             self._send(ResponseCode.REGISTER_FAILED)
             return
-        logger.info("[%s] registered '%s' as %s", self._peer, name, record.client_id.hex())
-        self._send(ResponseCode.REGISTER_OK, client_id_payload(record.client_id))
+        logger.info(
+            "[%s] registered '%s' as %s",
+            self._peer,
+            name,
+            record.client_id.hex(),
+        )
+        self._send(
+            ResponseCode.REGISTER_OK, client_id_payload(record.client_id)
+        )
 
     def _known_client(self, client_id, name):
         record = self._store.get(client_id)
@@ -171,8 +223,13 @@ class ClientSession:
         self._store.set_public_key(header.client_id, public_key)
         self._store.set_aes_key(header.client_id, aes_key)
 
-        logger.info("[%s] got public key from '%s', sending AES key", self._peer, name)
-        self._send(ResponseCode.AES_KEY, aes_key_payload(header.client_id, encrypted_key))
+        logger.info(
+            "[%s] got public key from '%s', sending AES key", self._peer, name
+        )
+        self._send(
+            ResponseCode.AES_KEY,
+            aes_key_payload(header.client_id, encrypted_key),
+        )
 
     def _handle_reconnect(self, header, payload):
         try:
@@ -184,15 +241,25 @@ class ClientSession:
             encrypted_key = encrypt_aes_key(record.public_key, aes_key)
         except (ProtocolError, CryptoError) as e:
             logger.warning("[%s] reconnect rejected: %s", self._peer, e)
-            self._send(ResponseCode.RECONNECT_DENIED, client_id_payload(header.client_id))
+            self._send(
+                ResponseCode.RECONNECT_DENIED,
+                client_id_payload(header.client_id),
+            )
             return
 
         self._store.set_aes_key(header.client_id, aes_key)
-        logger.info("[%s] '%s' reconnected, sending new AES key", self._peer, name)
-        self._send(ResponseCode.RECONNECT_OK, aes_key_payload(header.client_id, encrypted_key))
+        logger.info(
+            "[%s] '%s' reconnected, sending new AES key", self._peer, name
+        )
+        self._send(
+            ResponseCode.RECONNECT_OK,
+            aes_key_payload(header.client_id, encrypted_key),
+        )
 
     def _handle_file_packet(self, header):
-        packet = parse_file_packet_header(self._read_payload(FILE_PACKET_HEADER.size))
+        packet = parse_file_packet_header(
+            self._read_payload(FILE_PACKET_HEADER.size)
+        )
         self._packet = packet
 
         if self._rejected is not None:
@@ -209,35 +276,70 @@ class ClientSession:
             raise ProtocolError("file sent before key exchange")
 
         if self._incoming is not None and not self._incoming.belongs(packet):
-            raise ProtocolError("packet does not match the file being received")
+            raise ProtocolError(
+                "packet does not match the file being received"
+            )
         if self._incoming is None:
             folder = self._files_dir / header.client_id.hex()
             self._incoming = IncomingFile(folder, packet)
-            logger.info("[%s] receiving '%s': %d bytes in %d packets", self._peer,
-                        packet.file_name, packet.content_size, packet.total_packets)
+            logger.info(
+                "[%s] receiving '%s': %d bytes in %d packets",
+                self._peer,
+                packet.file_name,
+                packet.content_size,
+                packet.total_packets,
+            )
 
         while self._unread:
-            self._incoming.write(self._read_payload(min(self._unread, RECV_CHUNK_SIZE)))
-        logger.info("[%s] packet %d/%d, %d/%d bytes", self._peer, packet.packet_number,
-                    packet.total_packets, self._incoming.received, packet.content_size)
+            self._incoming.write(
+                self._read_payload(min(self._unread, RECV_CHUNK_SIZE))
+            )
+        logger.info(
+            "[%s] packet %d/%d, %d/%d bytes",
+            self._peer,
+            packet.packet_number,
+            packet.total_packets,
+            self._incoming.received,
+            packet.content_size,
+        )
 
         if not self._incoming.complete:
             if packet.packet_number == packet.total_packets:
-                raise ProtocolError("last packet arrived but file is incomplete")
+                raise ProtocolError(
+                    "last packet arrived but file is incomplete"
+                )
             return
 
         incoming, self._incoming = self._incoming, None
         cksum, plain_size = incoming.finish(record.aes_key)
         if plain_size != packet.orig_size:
-            logger.warning("[%s] '%s' decrypted to %d bytes, client said %d", self._peer,
-                           packet.file_name, plain_size, packet.orig_size)
+            logger.warning(
+                "[%s] '%s' decrypted to %d bytes, client said %d",
+                self._peer,
+                packet.file_name,
+                plain_size,
+                packet.orig_size,
+            )
 
-        relative_path = incoming.target.relative_to(self._files_dir.parent).as_posix()
-        self._store.save_file(FileRecord(header.client_id, packet.file_name, relative_path))
-        logger.info("[%s] saved '%s' as %s, cksum %d", self._peer, packet.file_name,
-                    relative_path, cksum)
-        self._send(ResponseCode.FILE_RECEIVED, file_received_payload(
-            header.client_id, packet.content_size, packet.file_name, cksum))
+        relative_path = incoming.target.relative_to(
+            self._files_dir.parent
+        ).as_posix()
+        self._store.save_file(
+            FileRecord(header.client_id, packet.file_name, relative_path)
+        )
+        logger.info(
+            "[%s] saved '%s' as %s, cksum %d",
+            self._peer,
+            packet.file_name,
+            relative_path,
+            cksum,
+        )
+        self._send(
+            ResponseCode.FILE_RECEIVED,
+            file_received_payload(
+                header.client_id, packet.content_size, packet.file_name, cksum
+            ),
+        )
 
     def _received_file(self, header, payload):
         file_name = parse_name_payload(payload)
@@ -251,7 +353,9 @@ class ClientSession:
     def _handle_crc_ok(self, header, payload):
         record = self._received_file(header, payload)
         self._store.set_verified(header.client_id, record.file_name, True)
-        logger.info("[%s] '%s' verified by client", self._peer, record.file_name)
+        logger.info(
+            "[%s] '%s' verified by client", self._peer, record.file_name
+        )
         self._send(ResponseCode.ACK, client_id_payload(header.client_id))
 
     def _handle_crc_retry(self, header, payload):
@@ -261,13 +365,21 @@ class ClientSession:
         except ProtocolError as e:
             logger.warning("[%s] ignoring CRC retry: %s", self._peer, e)
             return
-        logger.info("[%s] CRC mismatch on '%s', waiting for resend", self._peer, record.file_name)
+        logger.info(
+            "[%s] CRC mismatch on '%s', waiting for resend",
+            self._peer,
+            record.file_name,
+        )
 
     def _handle_crc_abort(self, header, payload):
         record = self._received_file(header, payload)
         (self._files_dir.parent / record.path).unlink(missing_ok=True)
         self._store.remove_file(header.client_id, record.file_name)
-        logger.warning("[%s] client gave up on '%s', file deleted", self._peer, record.file_name)
+        logger.warning(
+            "[%s] client gave up on '%s', file deleted",
+            self._peer,
+            record.file_name,
+        )
         self._send(ResponseCode.ACK, client_id_payload(header.client_id))
 
     def _drop_incoming(self):

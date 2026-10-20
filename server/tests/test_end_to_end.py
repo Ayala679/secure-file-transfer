@@ -78,22 +78,30 @@ class PublicKeyEndToEndTest(unittest.TestCase):
         aes_key = PKCS1_OAEP.new(self.rsa).decrypt(payload[16:])
         self.assertEqual(len(aes_key), 32)
         self.assertEqual(server_store().get(c.client_id).aes_key, aes_key)
-        self.assertEqual(server_store().get(c.client_id).public_key, self.public_der)
+        self.assertEqual(
+            server_store().get(c.client_id).public_key, self.public_der
+        )
 
     def test_unregistered_client_id(self):
         with connect() as c:
             c.client_id = b"\x01" * 16
-            self.assertEqual(c.send_public_key("nobody", self.public_der), (1607, b""))
+            self.assertEqual(
+                c.send_public_key("nobody", self.public_der), (1607, b"")
+            )
 
     def test_name_mismatch(self):
         with connect() as c:
             c.register("pk-owner")
-            self.assertEqual(c.send_public_key("someone-else", self.public_der), (1607, b""))
+            self.assertEqual(
+                c.send_public_key("someone-else", self.public_der), (1607, b"")
+            )
 
     def test_bad_key(self):
         with connect() as c:
             c.register("pk-bad")
-            self.assertEqual(c.send_public_key("pk-bad", bytes(160)), (1607, b""))
+            self.assertEqual(
+                c.send_public_key("pk-bad", bytes(160)), (1607, b"")
+            )
             self.assertIsNone(server_store().get(c.client_id).public_key)
 
     def test_second_key_gives_new_aes(self):
@@ -159,10 +167,11 @@ class FileClientMixin:
 
 
 class FileTransferEndToEndTest(FileClientMixin, unittest.TestCase):
-
     def check_transfer(self, data, chunk_size, name="data.bin"):
         c, aes_key = self.new_client()
-        code, (cid, size, got_name, crc) = c.send_file(name, data, aes_key, chunk_size)
+        code, (cid, size, got_name, crc) = c.send_file(
+            name, data, aes_key, chunk_size
+        )
         self.assertEqual(code, 1603)
         self.assertEqual(cid, c.client_id)
         self.assertEqual(size, (len(data) // 16 + 1) * 16)
@@ -186,7 +195,11 @@ class FileTransferEndToEndTest(FileClientMixin, unittest.TestCase):
 
     def test_no_temp_files_left(self):
         c = self.check_transfer(os.urandom(3000), 1024, "clean.bin")
-        leftovers = [p.name for p in self.saved(c, "x").parent.iterdir() if p.suffix in (".enc", ".part")]
+        leftovers = [
+            p.name
+            for p in self.saved(c, "x").parent.iterdir()
+            if p.suffix in (".enc", ".part")
+        ]
         self.assertEqual(leftovers, [])
 
     def test_path_traversal_name(self):
@@ -212,7 +225,9 @@ class FileTransferEndToEndTest(FileClientMixin, unittest.TestCase):
         c, aes_key = self.new_client()
         enc = encrypt_file(aes_key, os.urandom(4000))
         first = FILE_PACKET.pack(len(enc), 4000, 1, 2, name_field("m.bin"))
-        second = FILE_PACKET.pack(len(enc) + 16, 4000, 2, 2, name_field("m.bin"))
+        second = FILE_PACKET.pack(
+            len(enc) + 16, 4000, 2, 2, name_field("m.bin")
+        )
         c.send(828, first + enc[:2000])
         c.send(828, second + enc[2000:])
         self.assertEqual(c.receive()[1], 1607)
@@ -220,13 +235,20 @@ class FileTransferEndToEndTest(FileClientMixin, unittest.TestCase):
 
     def test_content_size_not_block_multiple(self):
         c, _ = self.new_client()
-        c.send(828, FILE_PACKET.pack(17, 1, 1, 1, name_field("bad.bin")) + bytes(17))
+        c.send(
+            828,
+            FILE_PACKET.pack(17, 1, 1, 1, name_field("bad.bin")) + bytes(17),
+        )
         self.assertEqual(c.receive()[1], 1607)
 
     def test_last_packet_but_incomplete(self):
         c, aes_key = self.new_client()
         enc = encrypt_file(aes_key, os.urandom(100))
-        c.send(828, FILE_PACKET.pack(len(enc), 100, 1, 1, name_field("short.bin")) + enc[:16])
+        c.send(
+            828,
+            FILE_PACKET.pack(len(enc), 100, 1, 1, name_field("short.bin"))
+            + enc[:16],
+        )
         self.assertEqual(c.receive()[1], 1607)
 
     def test_resend_same_file(self):
@@ -251,14 +273,18 @@ class CrcResultEndToEndTest(FileClientMixin, unittest.TestCase):
     def test_retry_then_ok(self):
         c, aes_key = self.send()
         c.crc_retry("f.bin")
-        self.assertEqual(c.send_file("f.bin", b"some file data", aes_key)[0], 1603)
+        self.assertEqual(
+            c.send_file("f.bin", b"some file data", aes_key)[0], 1603
+        )
         self.assertEqual(c.crc_ok("f.bin"), (1604, c.client_id))
 
     def test_three_retries_then_abort(self):
         c, aes_key = self.send()
         for _ in range(3):
             c.crc_retry("f.bin")
-            self.assertEqual(c.send_file("f.bin", b"some file data", aes_key)[0], 1603)
+            self.assertEqual(
+                c.send_file("f.bin", b"some file data", aes_key)[0], 1603
+            )
         self.assertEqual(c.crc_abort("f.bin"), (1604, c.client_id))
         self.assertFalse(self.saved(c, "f.bin").exists())
         self.assertIsNone(server_store().get_file(c.client_id, "f.bin"))
@@ -286,7 +312,9 @@ class ConcurrencyEndToEndTest(FileClientMixin, unittest.TestCase):
                 saved = files_dir() / c.client_id.hex() / f"p{i}.bin"
                 results[i] = ok and saved.read_bytes() == data
 
-        threads = [threading.Thread(target=worker, args=(i,)) for i in range(3)]
+        threads = [
+            threading.Thread(target=worker, args=(i,)) for i in range(3)
+        ]
         for t in threads:
             t.start()
         for t in threads:
@@ -295,7 +323,9 @@ class ConcurrencyEndToEndTest(FileClientMixin, unittest.TestCase):
 
     def test_idle_client_does_not_block_others(self):
         with connect(), connect() as other:
-            self.assertEqual(other.register(f"busy-{uuid.uuid4().hex[:8]}")[0], 1600)
+            self.assertEqual(
+                other.register(f"busy-{uuid.uuid4().hex[:8]}")[0], 1600
+            )
 
 
 class IdleTimeoutTest(unittest.TestCase):

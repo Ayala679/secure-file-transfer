@@ -36,7 +36,9 @@ class SessionHarness:
 
     def send(self, code, payload=b"", payload_size=None, client_id=bytes(16)):
         size = len(payload) if payload_size is None else payload_size
-        self.client.sendall(REQUEST_HEADER.pack(client_id, 3, code, size) + payload)
+        self.client.sendall(
+            REQUEST_HEADER.pack(client_id, 3, code, size) + payload
+        )
 
     def recv_response(self):
         raw = self._recv_exact(RESPONSE_HEADER.size)
@@ -70,7 +72,9 @@ class SessionTest(unittest.TestCase):
     def test_unknown_code(self):
         self.h.start()
         self.h.send(999)
-        self.assertEqual(self.h.recv_response(), (3, ResponseCode.GENERAL_ERROR, b""))
+        self.assertEqual(
+            self.h.recv_response(), (3, ResponseCode.GENERAL_ERROR, b"")
+        )
         self.assertTrue(self.h.is_closed())
 
     def test_bad_payload_size(self):
@@ -82,7 +86,11 @@ class SessionTest(unittest.TestCase):
 
     def test_handler_called_and_session_continues(self):
         calls = []
-        self.h.session._handlers[1] = (lambda header, payload: calls.append(payload), 3, 3)
+        self.h.session._handlers[1] = (
+            lambda header, payload: calls.append(payload),
+            3,
+            3,
+        )
         self.h.start()
         self.h.send(1, b"abc")
         self.h.send(1, b"xyz")
@@ -92,7 +100,11 @@ class SessionTest(unittest.TestCase):
 
     def test_header_split_in_pieces(self):
         calls = []
-        self.h.session._handlers[1] = (lambda header, payload: calls.append(payload), 2, 2)
+        self.h.session._handlers[1] = (
+            lambda header, payload: calls.append(payload),
+            2,
+            2,
+        )
         self.h.start()
         raw = REQUEST_HEADER.pack(bytes(16), 3, 1, 2) + b"ok"
         for b in raw:
@@ -127,19 +139,27 @@ class RegisterTest(unittest.TestCase):
         self.h.send(RequestCode.REGISTER, encode_name("Ayala"))
         self.h.recv_response()
         self.h.send(RequestCode.REGISTER, encode_name("Ayala"))
-        self.assertEqual(self.h.recv_response(), (3, ResponseCode.REGISTER_FAILED, b""))
+        self.assertEqual(
+            self.h.recv_response(), (3, ResponseCode.REGISTER_FAILED, b"")
+        )
 
     def test_bad_name_field(self):
         self.h.send(RequestCode.REGISTER, b"x" * 255)
-        self.assertEqual(self.h.recv_response()[1], ResponseCode.REGISTER_FAILED)
+        self.assertEqual(
+            self.h.recv_response()[1], ResponseCode.REGISTER_FAILED
+        )
 
     def test_other_client_version_accepted(self):
-        self.h.client.sendall(REQUEST_HEADER.pack(bytes(16), 2, RequestCode.REGISTER, 255)
-                              + encode_name("old-client"))
+        self.h.client.sendall(
+            REQUEST_HEADER.pack(bytes(16), 2, RequestCode.REGISTER, 255)
+            + encode_name("old-client")
+        )
         self.assertEqual(self.h.recv_response()[1], ResponseCode.REGISTER_OK)
 
     def test_client_id_ignored(self):
-        self.h.send(RequestCode.REGISTER, encode_name("Ayala"), client_id=b"\xff" * 16)
+        self.h.send(
+            RequestCode.REGISTER, encode_name("Ayala"), client_id=b"\xff" * 16
+        )
         payload = self.h.recv_response()[2]
         self.assertNotEqual(payload, b"\xff" * 16)
 

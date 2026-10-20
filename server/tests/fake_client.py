@@ -1,4 +1,5 @@
 """Minimal protocol client used to test the server without the C++ client."""
+
 import socket
 import struct
 import sys
@@ -38,7 +39,10 @@ class FakeClient:
 
     def send(self, code, payload=b"", client_id=None):
         cid = self.client_id if client_id is None else client_id
-        self.sock.sendall(REQUEST_HEADER.pack(cid, CLIENT_VERSION, code, len(payload)) + payload)
+        self.sock.sendall(
+            REQUEST_HEADER.pack(cid, CLIENT_VERSION, code, len(payload))
+            + payload
+        )
 
     def recv_exact(self, n):
         buf = b""
@@ -50,7 +54,9 @@ class FakeClient:
         return buf
 
     def receive(self):
-        version, code, size = RESPONSE_HEADER.unpack(self.recv_exact(RESPONSE_HEADER.size))
+        version, code, size = RESPONSE_HEADER.unpack(
+            self.recv_exact(RESPONSE_HEADER.size)
+        )
         return version, code, self.recv_exact(size)
 
     def request(self, code, payload=b"", client_id=None):
@@ -74,7 +80,9 @@ class FakeClient:
     def setup(self, name, rsa_key):
         """Register + key exchange, returns the AES key."""
         self.register(name)
-        code, payload = self.send_public_key(name, rsa_key.public_key().export_key("DER"))
+        code, payload = self.send_public_key(
+            name, rsa_key.public_key().export_key("DER")
+        )
         if code != 1602:
             raise RuntimeError(f"key exchange failed with {code}")
         return PKCS1_OAEP.new(rsa_key).decrypt(payload[16:])
@@ -91,12 +99,17 @@ class FakeClient:
     def send_packets(self, file_name, encrypted, orig_size, chunk_size):
         total = max(1, -(-len(encrypted) // chunk_size))
         for i in range(total):
-            chunk = encrypted[i * chunk_size:(i + 1) * chunk_size]
-            header = FILE_PACKET.pack(len(encrypted), orig_size, i + 1, total, name_field(file_name))
+            start = i * chunk_size
+            chunk = encrypted[start:start + chunk_size]
+            header = FILE_PACKET.pack(
+                len(encrypted), orig_size, i + 1, total, name_field(file_name)
+            )
             self.send(828, header + chunk)
 
     def send_file(self, file_name, data, aes_key, chunk_size=64 * 1024):
-        self.send_packets(file_name, encrypt_file(aes_key, data), len(data), chunk_size)
+        self.send_packets(
+            file_name, encrypt_file(aes_key, data), len(data), chunk_size
+        )
         _, code, payload = self.receive()
         if code == 1603:
             cid, size, name, crc = FILE_RECEIVED.unpack(payload)
@@ -113,5 +126,8 @@ if __name__ == "__main__":
         print(f"registered '{name}' as {client.client_id.hex()}, got AES key")
         if path:
             with open(path, "rb") as f:
-                code, info = client.send_file(path.replace("\\", "/").split("/")[-1], f.read(), aes_key)
-            print(f"send file: code {code}, server cksum {info[3] if code == 1603 else '-'}")
+                code, info = client.send_file(
+                    path.replace("\\", "/").split("/")[-1], f.read(), aes_key
+                )
+            crc = info[3] if code == 1603 else "-"
+            print(f"send file: code {code}, server cksum {crc}")

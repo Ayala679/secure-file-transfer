@@ -15,7 +15,12 @@ logger = logging.getLogger("server")
 
 
 class Server:
-    def __init__(self, port, files_dir=DEFAULT_FILES_DIR, idle_timeout=CLIENT_IDLE_TIMEOUT):
+    def __init__(
+        self,
+        port,
+        files_dir=DEFAULT_FILES_DIR,
+        idle_timeout=CLIENT_IDLE_TIMEOUT,
+    ):
         self.port = port
         self.ready = threading.Event()
         self._store = ClientStore()
@@ -23,12 +28,18 @@ class Server:
         self._idle_timeout = idle_timeout
 
     def serve_forever(self):
-        with socket.create_server(("", self.port), backlog=LISTEN_BACKLOG) as listener:
+        with socket.create_server(
+            ("", self.port), backlog=LISTEN_BACKLOG
+        ) as listener:
             # short accept timeout so Ctrl+C works on Windows
             listener.settimeout(ACCEPT_POLL_INTERVAL)
             self.port = listener.getsockname()[1]
             self.ready.set()
-            logger.info("server version %d listening on port %d", SERVER_VERSION, self.port)
+            logger.info(
+                "server version %d listening on port %d",
+                SERVER_VERSION,
+                self.port,
+            )
             logger.info("received files are stored in %s", self._files_dir)
             while True:
                 try:
@@ -40,13 +51,18 @@ class Server:
     def _start_session(self, conn, address):
         conn.settimeout(self._idle_timeout)
         session = ClientSession(conn, self._store, address, self._files_dir)
-        thread = threading.Thread(target=session.run, name=f"client-{address[1]}", daemon=True)
+        thread = threading.Thread(
+            target=session.run, name=f"client-{address[1]}", daemon=True
+        )
         thread.start()
 
 
 def main():
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s",
-                        datefmt="%H:%M:%S")
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(message)s",
+        datefmt="%H:%M:%S",
+    )
     port = read_port()
     try:
         Server(port).serve_forever()

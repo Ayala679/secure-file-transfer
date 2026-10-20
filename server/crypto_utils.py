@@ -47,12 +47,15 @@ class AesCbcDecryptor:
         if whole == 0:
             return b""
         plain = self._last_block + self._cipher.decrypt(data[:whole])
-        self._last_block = plain[-AES.block_size:]
-        return plain[:-AES.block_size]
+        cut = len(plain) - AES.block_size
+        self._last_block = plain[cut:]
+        return plain[:cut]
 
     def finish(self):
         if self._partial or not self._last_block:
-            raise CryptoError("ciphertext length is not a multiple of the block size")
+            raise CryptoError(
+                "ciphertext length is not a multiple of the block size"
+            )
         try:
             return unpad(self._last_block, AES.block_size)
         except ValueError as e:

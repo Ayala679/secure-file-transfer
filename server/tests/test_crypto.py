@@ -5,7 +5,12 @@ from Crypto.Cipher import AES, PKCS1_OAEP
 from Crypto.PublicKey import RSA
 from Crypto.Util.Padding import pad
 
-from crypto_utils import AesCbcDecryptor, CryptoError, encrypt_aes_key, generate_aes_key
+from crypto_utils import (
+    AesCbcDecryptor,
+    CryptoError,
+    encrypt_aes_key,
+    generate_aes_key,
+)
 
 
 def encrypt(key, plain):
@@ -14,7 +19,8 @@ def encrypt(key, plain):
 
 def decrypt_in_chunks(key, cipher, chunk):
     d = AesCbcDecryptor(key)
-    out = b"".join(d.update(cipher[i:i + chunk]) for i in range(0, len(cipher), chunk))
+    pieces = [cipher[i:i + chunk] for i in range(0, len(cipher), chunk)]
+    out = b"".join(d.update(p) for p in pieces)
     return out + d.finish()
 
 
@@ -54,7 +60,9 @@ class RsaEncryptTest(unittest.TestCase):
 
     def test_private_key_rejected(self):
         with self.assertRaises(CryptoError):
-            encrypt_aes_key(self.private_key.export_key("DER"), generate_aes_key())
+            encrypt_aes_key(
+                self.private_key.export_key("DER"), generate_aes_key()
+            )
 
 
 class AesDecryptTest(unittest.TestCase):
@@ -66,7 +74,9 @@ class AesDecryptTest(unittest.TestCase):
         cipher = encrypt(self.key, plain)
         for chunk in (1, 7, 16, 4096, 65536, len(cipher)):
             with self.subTest(chunk=chunk):
-                self.assertEqual(decrypt_in_chunks(self.key, cipher, chunk), plain)
+                self.assertEqual(
+                    decrypt_in_chunks(self.key, cipher, chunk), plain
+                )
 
     def test_padding_edge_lengths(self):
         for size in (0, 1, 15, 16, 17, 32):

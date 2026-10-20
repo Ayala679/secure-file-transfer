@@ -191,7 +191,7 @@
 |---|---|---|
 | Python | ✅ 3.12.10 בסביבה וירטואלית `.venv` בתיקיית הפרויקט (3.13 נשאר מותקן אבל לא בשימוש) | להריץ תמיד דרך `.venv\Scripts\python.exe` |
 | PyCryptodome | ✅ 4.0.1 בתוך `.venv` | – |
-| ruff | ✅ 0.17.1 בתוך `.venv` | `.venv\Scripts\python.exe -m ruff check server` |
+| ruff + flake8 | ✅ בתוך `.venv` | **מתוך `server/`**: `..\.venv\Scripts\python.exe -m ruff check .` וגם `-m flake8 .` (ברירות מחדל, 79 תווים). מהשורש ruff מסווג imports אחרת |
 | Visual Studio | Community **2022** | הבדיקה ב-**2026** – להתקין VS Community 2026 עם workload "Desktop development with C++" (D31) |
 | CryptoPP | ✅ גרסת vcpkg 2026-03-02, ב-`C:\vcpkg`, עם `integrate install` | נבדק: AES-CBC עובד, מפתח ציבורי RSA-1024 = **160 בתים** (מאשר את D16) |
 | `cksum` | ✅ ב-Git Bash | משמש לבדיקת ה-CRC |

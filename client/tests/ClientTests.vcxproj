@@ -52,12 +52,16 @@
     <ClCompile Include="TestMain.cpp" />
     <ClCompile Include="ConstantsTests.cpp" />
     <ClCompile Include="EndianTests.cpp" />
+    <ClCompile Include="ProtocolTests.cpp" />
+    <ClCompile Include="..\src\Protocol.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="TestFramework.h" />
+    <ClInclude Include="ProtocolVectors.h" />
     <ClInclude Include="..\src\Constants.h" />
     <ClInclude Include="..\src\Endian.h" />
     <ClInclude Include="..\src\Errors.h" />
+    <ClInclude Include="..\src\Protocol.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
 </Project>
