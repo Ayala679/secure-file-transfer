@@ -23,4 +23,20 @@ inline constexpr const char* FILE_RECEIVED_RESPONSE =
 inline constexpr const char* GENERAL_ERROR_RESPONSE =
     "03470600000000";
 
+// data[i] = (i * 31 + 7) % 256
+struct CksumVector {
+    unsigned length;
+    unsigned long cksum;
+};
+
+inline constexpr CksumVector CKSUM_VECTORS[] = {
+    {0, 4294967295ul},
+    {1, 3438386226ul},
+    {255, 2538851431ul},
+    {256, 4289313279ul},
+    {300, 3461723737ul},
+    {65536, 655604513ul},
+    {100000, 467883314ul},
+};
+
 }

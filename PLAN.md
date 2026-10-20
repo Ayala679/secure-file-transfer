@@ -96,9 +96,9 @@
   🧪 ‏`appendLE<uint16_t>(825)` → `39 03` · ‏round-trip של ערכי קצה (0, ‏0xFFFF, ‏0xFFFFFFFF)
 - [x] **4.4** `Protocol` – בניית כל הבקשות ופענוח כל התשובות
   🧪 ה-hex של כל בקשה זהה בייט-בייט ל-`protocol.py` · תשובות שנוצרו ב-Python מפוענחות נכון · payload קצר מדי → `ProtocolError`
-- [ ] **4.5** `Cksum`
+- [x] **4.5** `Cksum`
   🧪 אותם ערכים כמו במשימה 1.6, על אותם קבצים
-- [ ] **4.6** `JsonParser` + ‏`TransferConfig` (D4)
+- [x] **4.6** `JsonParser` + ‏`TransferConfig` (D4)
   🧪 הדוגמה **המדויקת** מההוראות (עם `\` בודד) · שדה חסר · שם מעל 100 תווים · פורט לא תקין · רשימת קבצים ריקה → `FatalError` ברור
 - [ ] **4.7** commit
 
