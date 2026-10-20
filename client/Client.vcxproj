@@ -60,6 +60,10 @@
     <ClCompile Include="src\Cksum.cpp" />
     <ClCompile Include="src\JsonParser.cpp" />
     <ClCompile Include="src\Protocol.cpp" />
+    <ClCompile Include="src\Base64.cpp" />
+    <ClCompile Include="src\ClientIdentity.cpp" />
+    <ClCompile Include="src\RsaWrapper.cpp" />
+    <ClCompile Include="src\AesWrapper.cpp" />
     <ClCompile Include="src\TransferConfig.cpp" />
   </ItemGroup>
   <ItemGroup>
@@ -69,6 +73,10 @@
     <ClInclude Include="src\Errors.h" />
     <ClInclude Include="src\JsonParser.h" />
     <ClInclude Include="src\Protocol.h" />
+    <ClInclude Include="src\Base64.h" />
+    <ClInclude Include="src\ClientIdentity.h" />
+    <ClInclude Include="src\RsaWrapper.h" />
+    <ClInclude Include="src\AesWrapper.h" />
     <ClInclude Include="src\TransferConfig.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
