@@ -76,6 +76,7 @@
 | D28 | בונוס SQLite | **נדחה לסוף.** שכבת האחסון בשרת (`ClientStore`) בנויה כך שאפשר להוסיף לה DB בלי לשנות את שאר הקוד | החלטת המשתמשת |
 | D29 | היררכיית חריגות בלקוח | קובץ `Errors.h`: בסיס `ClientError : std::runtime_error`, ומתחתיו: **`ServerError`** (1601, 1607, קוד לא צפוי, payload בגודל שגוי) → **ניסיון חוזר** לפי D7, עם ההודעה `server responded with an error`; **`ProtocolError`** (תשובה פגומה שאי אפשר לפענח, למשל גרסה/כותרת שבורה) → נחשב גם הוא לשגיאת שרת ועובר ניסיון חוזר; **`FatalError`** (קובץ קונפיגורציה חסר/פגום, כשל חיבור, חיבור שנסגר, קובץ לקוח לא קריא, מיצוי ניסיונות) → יציאה מיידית. `main.cpp` תופס `FatalError` (וכל `std::exception`) ומדפיס `Fatal: <פירוט>` | ההבחנה בין "לנסות שוב" ל"לצאת" חייבת להיות מפורשת בקוד |
 | D30 | קבועים בלקוח | קובץ `Constants.h` עם `constexpr` בלבד: גרסה, כל קודי הבקשות והתשובות (`enum class`), כל גדלי השדות, גודל כותרות, גודל חבילה, מספר ניסיונות, timeouts, שמות קבצים (`transfer.json`, `me.info`, `priv.key`), גדלי מפתחות. **אף מספר לא מופיע ישירות בקוד** | הוראות: "המנעו ממספרי קסם" |
+| D33 | מבנה פרויקט הלקוח | `src/` = רק קבצי ההגשה. `tests/` = פרויקט בדיקות נפרד (`ClientTests`) שמקמפל את אותם קבצי `src` + מסגרת בדיקות קטנה משלנו (בלי ספריות חיצוניות). הגדרות משותפות ב-`client.props`, כולל **warnings as errors**. פלט בנייה ב-`bin/` ו-`obj/` (לא ב-git) | הפרדה בין קוד הגשה לקוד בדיקה; הגדרות זהות לשני הפרויקטים; אין אזהרות שנבלעות |
 | D31 | Visual Studio 2026 | הפרויקט נבנה ונבדק ב-**VS Community 2026**, עם `/std:c++20` מוגדר במפורש (Project → Properties → C/C++ → Language), גם ב-Debug וגם ב-Release, x64. VS 2022 משמש רק עד שתהיה התקנה של 2026 | זו סביבת הבדיקה של המטלה |
 
 ---
@@ -97,22 +98,31 @@
 │   ├── cksum.py             CRC בסגנון cksum של לינוקס
 │   ├── port.info            (לא מוגש – רק לבדיקה)
 │   └── tests/               (לא מוגש) test_client.py, בדיקות יחידה
-├── client/                  ← מוגש (רק .h/.cpp)
-│   ├── main.cpp             נקודת כניסה, try/catch → Fatal
-│   ├── Constants.h          כל הקבועים (constexpr) – D30
-│   ├── Errors.h             ClientError / ServerError / ProtocolError / FatalError – D29
-│   ├── Endian.h             writeU16LE / readU32LE ...
-│   ├── Protocol.h/.cpp      בניית בקשות, פענוח תשובות (משתמש ב-Constants.h)
-│   ├── JsonParser.h/.cpp    parser מינימלי
-│   ├── TransferConfig.h/.cpp  קריאה ובדיקה של transfer.json
-│   ├── ClientIdentity.h/.cpp  me.info + priv.key
-│   ├── RsaWrapper.h/.cpp    יצירה, ייצוא, פענוח (CryptoPP)
-│   ├── AesWrapper.h/.cpp    הצפנה בבלוקים (CryptoPP)
-│   ├── Base64.h/.cpp
-│   ├── Cksum.h/.cpp
-│   ├── TcpConnection.h/.cpp sendAll / recvExact (Winsock, RAII)
-│   ├── FileTransferClient.h/.cpp  הזרימה הראשית (state machine)
-│   └── tests/               (לא מוגש) פונקציות בדיקה קטנות
+├── client/
+│   ├── client.sln           Client + ClientTests
+│   ├── client.props         הגדרות משותפות: C++20, W4, warnings=errors, bin/obj, ws2_32 (D33)
+│   ├── Client.vcxproj
+│   ├── build.ps1            בנייה + הרצת בדיקות משורת הפקודה
+│   ├── src/                 ← מוגש (רק .h/.cpp, ורק הם)
+│   │   ├── main.cpp             נקודת כניסה, try/catch → Fatal
+│   │   ├── Constants.h          כל הקבועים (constexpr) – D30
+│   │   ├── Errors.h             ClientError / ServerError / ProtocolError / FatalError – D29
+│   │   ├── Endian.h             writeU16LE / readU32LE ...
+│   │   ├── Protocol.h/.cpp      בניית בקשות, פענוח תשובות
+│   │   ├── JsonParser.h/.cpp    parser מינימלי
+│   │   ├── TransferConfig.h/.cpp  קריאה ובדיקה של transfer.json
+│   │   ├── ClientIdentity.h/.cpp  me.info + priv.key
+│   │   ├── RsaWrapper.h/.cpp    יצירה, ייצוא, פענוח (CryptoPP)
+│   │   ├── AesWrapper.h/.cpp    הצפנה בבלוקים (CryptoPP)
+│   │   ├── Base64.h/.cpp
+│   │   ├── Cksum.h/.cpp
+│   │   ├── TcpConnection.h/.cpp sendAll / recvExact (Winsock, RAII)
+│   │   └── FileTransferClient.h/.cpp  הזרימה הראשית
+│   └── tests/               (לא מוגש)
+│       ├── ClientTests.vcxproj
+│       ├── TestFramework.h  TEST_CASE / CHECK / CHECK_THROWS
+│       ├── TestMain.cpp
+│       └── *Tests.cpp
 └── docs/
     ├── unit7/               קוד הדוגמה מיחידה 7 (cksum + CryptoPP)
     └── Q2_vulnerabilities   מסמך שאלה 2
