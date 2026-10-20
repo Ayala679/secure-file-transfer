@@ -50,9 +50,14 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="TestMain.cpp" />
+    <ClCompile Include="ConstantsTests.cpp" />
+    <ClCompile Include="EndianTests.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="TestFramework.h" />
+    <ClInclude Include="..\src\Constants.h" />
+    <ClInclude Include="..\src\Endian.h" />
+    <ClInclude Include="..\src\Errors.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
 </Project>

@@ -90,10 +90,10 @@
 ## יום 4 – יסודות הלקוח (ד' 21.10)
 - [x] **4.1** פרויקט VS ‏`client` (Console, x64, ‏`/std:c++20`, ‏Warning Level 4)
   🧪 מתקמפל עם include של CryptoPP
-- [ ] **4.2** `Constants.h` + ‏`Errors.h` (D29, D30)
+- [x] **4.2** `Constants.h` + ‏`Errors.h` (D29, D30)
   🧪 מתקמפל
-- [ ] **4.3** `Endian.h` – ‏`writeU16LE`, ‏`writeU32LE`, ‏`readU16LE`, ‏`readU32LE`
-  🧪 ‏`writeU16LE(825)` → `39 03` · ‏round-trip של ערכי קצה (0, ‏0xFFFF, ‏0xFFFFFFFF)
+- [x] **4.3** `Endian.h` – ‏`appendLE<T>` / ‏`readLE<T>` (תבנית אחת לכל הגדלים)
+  🧪 ‏`appendLE<uint16_t>(825)` → `39 03` · ‏round-trip של ערכי קצה (0, ‏0xFFFF, ‏0xFFFFFFFF)
 - [ ] **4.4** `Protocol` – בניית כל הבקשות ופענוח כל התשובות
   🧪 ה-hex של כל בקשה זהה בייט-בייט ל-`protocol.py` · תשובות שנוצרו ב-Python מפוענחות נכון · payload קצר מדי → `ProtocolError`
 - [ ] **4.5** `Cksum`
