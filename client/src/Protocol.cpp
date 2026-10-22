@@ -104,6 +104,21 @@ Bytes filePacketHeader(const FilePacketInfo& info)
     return out;
 }
 
+PacketPlan planPackets(std::uint64_t contentSize)
+{
+    if (contentSize == 0 || contentSize > UINT32_MAX)
+        throw std::length_error("content size does not fit the protocol");
+
+    // grow the packet when the default size would need more than 65535 packets
+    std::uint64_t packetSize = config::DEFAULT_PACKET_SIZE;
+    if ((contentSize + packetSize - 1) / packetSize > config::MAX_PACKETS) {
+        packetSize = (contentSize + config::MAX_PACKETS - 1) / config::MAX_PACKETS;
+        packetSize = (packetSize + crypto::AES_BLOCK_SIZE - 1) / crypto::AES_BLOCK_SIZE * crypto::AES_BLOCK_SIZE;
+    }
+    const std::uint64_t total = (contentSize + packetSize - 1) / packetSize;
+    return {static_cast<std::uint32_t>(packetSize), static_cast<std::uint16_t>(total)};
+}
+
 ResponseHeader parseResponseHeader(ByteView data)
 {
     requireSize(data, RESPONSE_HEADER_SIZE, "response header");

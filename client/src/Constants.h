@@ -73,6 +73,7 @@ inline constexpr std::string_view PRIVATE_KEY_FILE = "priv.key";
 inline constexpr std::size_t MAX_CLIENT_NAME_LENGTH = 100;
 inline constexpr std::size_t DEFAULT_PACKET_SIZE = 64 * 1024;
 inline constexpr std::size_t MAX_PACKETS = 0xFFFF;
+inline constexpr std::size_t FILE_READ_CHUNK = 64 * 1024;
 
 inline constexpr int MAX_SERVER_ERROR_RETRIES = 3;
 inline constexpr int MAX_SEND_ATTEMPTS = 1 + 3;

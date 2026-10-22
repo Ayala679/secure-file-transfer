@@ -1,11 +1,15 @@
 #include "FileTransferClient.h"
 
+#include "AesWrapper.h"
 #include "Base64.h"
+#include "Cksum.h"
 #include "Constants.h"
 #include "Errors.h"
-#include "RsaWrapper.h"
 
+#include <algorithm>
+#include <fstream>
 #include <iostream>
+#include <system_error>
 
 using protocol::Bytes;
 using protocol::RequestCode;
@@ -14,6 +18,8 @@ using protocol::ResponseCode;
 namespace {
 
 constexpr std::string_view SERVER_ERROR_MESSAGE = "server responded with an error";
+constexpr char FIRST_PRINTABLE = 0x20;
+constexpr char LAST_PRINTABLE = 0x7E;
 
 std::uint16_t codeOf(ResponseCode code)
 {
@@ -32,6 +38,12 @@ void expectCode(std::uint16_t actual, ResponseCode expected)
                       + std::to_string(codeOf(expected)));
 }
 
+std::string displayPath(const std::filesystem::path& path)
+{
+    const std::u8string u8 = path.u8string();
+    return std::string(u8.begin(), u8.end());
+}
+
 }
 
 FileTransferClient::FileTransferClient(TransferConfig config, const std::filesystem::path& baseDir)
@@ -41,11 +53,22 @@ FileTransferClient::FileTransferClient(TransferConfig config, const std::filesys
 {
 }
 
-void FileTransferClient::run()
+bool FileTransferClient::run()
 {
     connect();
-    const Bytes aesKey = establishKeys();
-    std::cout << "AES key received, " << config_.files.size() << " file(s) to send\n";
+    aesKey_ = establishKeys();
+
+    std::size_t verified = 0;
+    for (const auto& path : config_.files) {
+        try {
+            if (sendFile(path))
+                ++verified;
+        } catch (const FileError& e) {
+            std::cerr << "skipping " << displayPath(path) << ": " << e.what() << '\n';
+        }
+    }
+    std::cout << verified << " of " << config_.files.size() << " file(s) sent and verified\n";
+    return verified == config_.files.size();
 }
 
 void FileTransferClient::connect()
@@ -55,15 +78,24 @@ void FileTransferClient::connect()
     connection_ = std::make_unique<TcpConnection>(config_.serverIp, config_.port, config::RECEIVE_TIMEOUT_MS);
 }
 
-FileTransferClient::Response FileTransferClient::exchange(RequestCode code, protocol::ByteView payload)
+void FileTransferClient::send(RequestCode code, protocol::ByteView payload)
 {
     connection_->sendAll(protocol::buildRequest(clientId_, code, payload));
+}
 
+FileTransferClient::Response FileTransferClient::receive()
+{
     const Bytes rawHeader = connection_->receiveExact(protocol::RESPONSE_HEADER_SIZE);
     const auto header = protocol::parseResponseHeader(rawHeader);
     if (header.version != protocol::CLIENT_VERSION)
         std::cerr << "warning: server version " << int{header.version} << '\n';
     return {header.code, connection_->receiveExact(header.payloadSize)};
+}
+
+FileTransferClient::Response FileTransferClient::exchange(RequestCode code, protocol::ByteView payload)
+{
+    send(code, payload);
+    return receive();
 }
 
 // Runs one request step; on a server error it prints the required message
@@ -102,7 +134,15 @@ std::optional<Bytes> FileTransferClient::reconnect(const ClientIdentity& identit
 {
     name_ = identity.name;
     clientId_ = identity.clientId;
-    const auto key = RsaPrivateKey::fromDer(base64::decode(identity.privateKeyBase64));
+    const auto key = [&] {
+        try {
+            return RsaPrivateKey::fromDer(base64::decode(identity.privateKeyBase64));
+        } catch (const FatalError& e) {
+            throw FatalError(std::string("the saved private key is unusable (") + e.what() + "). Delete "
+                             + std::string(config::ME_FILE) + " and " + std::string(config::PRIVATE_KEY_FILE)
+                             + " to register again");
+        }
+    }();
     std::cout << "found " << config::ME_FILE << ", reconnecting as '" << name_ << "' (" << toHex(clientId_)
               << ")\n";
 
@@ -149,4 +189,132 @@ Bytes FileTransferClient::takeAesKey(const RsaPrivateKey& key, const Response& r
     if (aesKey.size() != crypto::AES_KEY_SIZE)
         throw ProtocolError("AES key has the wrong size");
     return aesKey;
+}
+
+// Sends one file and checks the server's cksum: up to MAX_SEND_ATTEMPTS sends,
+// 901 between them and 902 when the last one still does not match.
+bool FileTransferClient::sendFile(const std::filesystem::path& path)
+{
+    const OutgoingFile file = prepare(path);
+    std::cout << "sending '" << file.name << "' (" << file.origSize << " bytes)\n";
+
+    for (int attempt = 1; attempt <= config::MAX_SEND_ATTEMPTS; ++attempt) {
+        const auto [localCksum, serverCksum] = withRetries("send " + file.name, [&] {
+            const std::uint32_t local = transmit(file);
+            return std::pair{local, receiveServerCksum(file)};
+        });
+        std::cout << "  cksum: local " << localCksum << ", server " << serverCksum << '\n';
+
+        if (localCksum == serverCksum) {
+            confirm(RequestCode::CrcOk, file);
+            std::cout << "  '" << file.name << "' verified\n";
+            return true;
+        }
+        if (attempt < config::MAX_SEND_ATTEMPTS) {
+            std::cout << "  cksum mismatch, sending again (attempt " << attempt + 1 << " of "
+                      << config::MAX_SEND_ATTEMPTS << ")\n";
+            send(RequestCode::CrcRetry, protocol::namePayload(file.name));
+        }
+    }
+    confirm(RequestCode::CrcAbort, file);
+    std::cout << "  giving up on '" << file.name << "' after " << config::MAX_SEND_ATTEMPTS << " attempts\n";
+    return false;
+}
+
+FileTransferClient::OutgoingFile FileTransferClient::prepare(const std::filesystem::path& path) const
+{
+    std::error_code ec;
+    if (!std::filesystem::is_regular_file(path, ec))
+        throw FileError("file not found");
+    const std::uintmax_t size = std::filesystem::file_size(path, ec);
+    if (ec)
+        throw FileError("cannot read the file size");
+    const std::uint64_t contentSize = AesCbcEncryptor::encryptedSize(size);
+    if (contentSize > UINT32_MAX)
+        throw FileError("file is too large for the protocol (4 GB limit)");
+
+    const std::u8string u8name = path.filename().u8string();
+    std::string name(u8name.begin(), u8name.end());
+    if (name.empty() || name.size() > protocol::MAX_NAME_LENGTH
+        || !std::all_of(name.begin(), name.end(), [](char c) { return c >= FIRST_PRINTABLE && c <= LAST_PRINTABLE; }))
+        throw FileError("file name must be up to " + std::to_string(protocol::MAX_NAME_LENGTH)
+                        + " printable ASCII characters");
+
+    return {path, std::move(name), static_cast<std::uint32_t>(size), static_cast<std::uint32_t>(contentSize)};
+}
+
+// Streams the file: read, cksum, encrypt and send packet by packet,
+// so the whole file is never held in memory. Returns the local cksum.
+std::uint32_t FileTransferClient::transmit(const OutgoingFile& file)
+{
+    std::ifstream in(file.path, std::ios::binary);
+    if (!in)
+        throw FileError("cannot open the file");
+
+    const auto plan = protocol::planPackets(file.contentSize);
+    AesCbcEncryptor encryptor(aesKey_);
+    Cksum cksum;
+    Bytes pending;
+    Bytes readBuffer(config::FILE_READ_CHUNK);
+    std::uint64_t bytesRead = 0;
+    std::uint16_t packetNumber = 0;
+
+    auto sendPacket = [&](std::size_t length) {
+        ++packetNumber;
+        const protocol::FilePacketInfo info{file.contentSize, file.origSize, packetNumber, plan.totalPackets,
+                                            file.name};
+        const Bytes packetHeader = protocol::filePacketHeader(info);
+        const auto payloadSize = static_cast<std::uint32_t>(packetHeader.size() + length);
+        connection_->sendAll(protocol::buildRequestHeader(clientId_, RequestCode::SendFile, payloadSize));
+        connection_->sendAll(packetHeader);
+        connection_->sendAll(protocol::ByteView(pending).first(length));
+        pending.erase(pending.begin(), pending.begin() + static_cast<std::ptrdiff_t>(length));
+    };
+    auto append = [&](const Bytes& data) {
+        pending.insert(pending.end(), data.begin(), data.end());
+        while (pending.size() >= plan.packetSize && packetNumber + 1 < plan.totalPackets)
+            sendPacket(plan.packetSize);
+    };
+
+    while (in) {
+        in.read(reinterpret_cast<char*>(readBuffer.data()), static_cast<std::streamsize>(readBuffer.size()));
+        const auto got = static_cast<std::size_t>(in.gcount());
+        if (got == 0)
+            break;
+        const protocol::ByteView chunk(readBuffer.data(), got);
+        bytesRead += got;
+        cksum.update(chunk);
+        append(encryptor.update(chunk));
+    }
+    append(encryptor.finish());
+
+    // the file changed while we were reading it; the server is now out of sync
+    if (bytesRead != file.origSize || pending.size() > plan.packetSize)
+        throw FatalError("'" + file.name + "' changed while it was being sent");
+    sendPacket(pending.size());
+    if (packetNumber != plan.totalPackets)
+        throw FatalError("internal error: sent " + std::to_string(packetNumber) + " of "
+                         + std::to_string(plan.totalPackets) + " packets");
+    return cksum.digest();
+}
+
+std::uint32_t FileTransferClient::receiveServerCksum(const OutgoingFile& file)
+{
+    const auto response = receive();
+    expectCode(response.code, ResponseCode::FileReceived);
+    const auto received = protocol::parseFileReceived(response.payload);
+    if (received.clientId != clientId_ || received.fileName != file.name
+        || received.contentSize != file.contentSize)
+        throw ProtocolError("file confirmation does not match the file that was sent");
+    return received.cksum;
+}
+
+void FileTransferClient::confirm(RequestCode code, const OutgoingFile& file)
+{
+    withRetries("confirm " + file.name, [&] {
+        const auto response = exchange(code, protocol::namePayload(file.name));
+        expectCode(response.code, ResponseCode::Ack);
+        if (protocol::parseClientId(response.payload) != clientId_)
+            throw ProtocolError("acknowledgement is for a different client id");
+    });
 }

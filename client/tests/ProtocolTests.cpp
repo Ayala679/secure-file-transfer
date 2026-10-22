@@ -145,6 +145,33 @@ TEST_CASE(name_field_validation)
     CHECK(decodeName(ok) == "x.bin");
 }
 
+TEST_CASE(packet_plan_default_size)
+{
+    const auto small = planPackets(16);
+    CHECK(small.packetSize == config::DEFAULT_PACKET_SIZE);
+    CHECK(small.totalPackets == 1);
+
+    const auto hundredK = planPackets(102416);
+    CHECK(hundredK.totalPackets == 2);
+
+    const auto exact = planPackets(2 * config::DEFAULT_PACKET_SIZE);
+    CHECK(exact.totalPackets == 2);
+}
+
+TEST_CASE(packet_plan_grows_for_huge_files)
+{
+    const auto plan = planPackets(UINT32_MAX - 15);
+    CHECK(plan.totalPackets <= config::MAX_PACKETS);
+    CHECK(plan.packetSize % crypto::AES_BLOCK_SIZE == 0);
+    CHECK(std::uint64_t{plan.packetSize} * plan.totalPackets >= UINT32_MAX - 15);
+}
+
+TEST_CASE(packet_plan_rejects_bad_sizes)
+{
+    CHECK_THROWS(planPackets(0), std::length_error);
+    CHECK_THROWS(planPackets(std::uint64_t{UINT32_MAX} + 1), std::length_error);
+}
+
 TEST_CASE(public_key_size_enforced)
 {
     CHECK_THROWS(publicKeyPayload("Ayala", Bytes(PUBLIC_KEY_SIZE - 1)), std::invalid_argument);

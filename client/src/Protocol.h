@@ -51,6 +51,14 @@ Bytes namePayload(std::string_view name);
 Bytes publicKeyPayload(std::string_view name, ByteView publicKey);
 Bytes filePacketHeader(const FilePacketInfo& info);
 
+struct PacketPlan {
+    std::uint32_t packetSize;
+    std::uint16_t totalPackets;
+};
+
+// throws std::length_error when the content does not fit the 4 byte size field
+PacketPlan planPackets(std::uint64_t contentSize);
+
 ResponseHeader parseResponseHeader(ByteView data);
 ClientId parseClientId(ByteView payload);
 KeyResponse parseKeyResponse(ByteView payload);

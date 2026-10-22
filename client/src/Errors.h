@@ -23,3 +23,9 @@ class FatalError : public ClientError {
 public:
     using ClientError::ClientError;
 };
+
+// a local file that cannot be sent; the client skips it and goes on
+class FileError : public ClientError {
+public:
+    using ClientError::ClientError;
+};

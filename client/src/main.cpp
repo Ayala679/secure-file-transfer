@@ -41,8 +41,7 @@ int main()
         const auto baseDir = executableDirectory();
         auto config = TransferConfig::load(baseDir / config::TRANSFER_FILE);
         FileTransferClient client(std::move(config), baseDir);
-        client.run();
-        return EXIT_SUCCESS;
+        return client.run() ? EXIT_SUCCESS : EXIT_FAILURE;
     } catch (const ClientError& e) {
         std::cerr << "Fatal: " << e.what() << '\n';
     } catch (const std::exception& e) {
