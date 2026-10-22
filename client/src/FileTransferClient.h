@@ -32,7 +32,6 @@ private:
     };
 
     void connect();
-    void reopenConnection();
     void send(protocol::RequestCode code, protocol::ByteView payload);
     Response receive();
     Response exchange(protocol::RequestCode code, protocol::ByteView payload);
@@ -57,5 +56,4 @@ private:
     protocol::ClientId clientId_{};
     std::string name_;
     protocol::Bytes aesKey_;
-    bool keysEstablished_ = false;
 };

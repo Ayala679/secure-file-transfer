@@ -9,7 +9,6 @@
 
 namespace {
 
-// exactly as in the assignment, single backslashes included
 constexpr const char* ASSIGNMENT_EXAMPLE = R"({
     "server": {
         "ip": "192.168.1.5",

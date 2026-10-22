@@ -1,4 +1,3 @@
-"""Minimal protocol client used to test the server without the C++ client."""
 
 import socket
 import struct
@@ -78,7 +77,6 @@ class FakeClient:
         return code, payload
 
     def setup(self, name, rsa_key):
-        """Register + key exchange, returns the AES key."""
         self.register(name)
         code, payload = self.send_public_key(
             name, rsa_key.public_key().export_key("DER")

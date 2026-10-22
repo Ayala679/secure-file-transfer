@@ -57,7 +57,6 @@ bool FileTransferClient::run()
 {
     connect();
     aesKey_ = establishKeys();
-    keysEstablished_ = true;
 
     std::size_t verified = 0;
     for (const auto& path : config_.files) {
@@ -77,13 +76,6 @@ void FileTransferClient::connect()
     std::cout << "connecting to " << config_.serverIp << ':' << config_.port << '\n';
     connection_.reset();
     connection_ = std::make_unique<TcpConnection>(config_.serverIp, config_.port, config::RECEIVE_TIMEOUT_MS);
-}
-
-void FileTransferClient::reopenConnection()
-{
-    connect();
-    if (keysEstablished_)
-        aesKey_ = establishKeys();
 }
 
 void FileTransferClient::send(RequestCode code, protocol::ByteView payload)
@@ -119,7 +111,7 @@ auto FileTransferClient::withRetries(std::string_view action, Attempt attempt)
                 throw FatalError(std::string(action) + " failed after "
                                  + std::to_string(config::MAX_SERVER_ERROR_RETRIES + 1) + " attempts: " + e.what());
             if (dynamic_cast<const ProtocolError*>(&e) != nullptr)
-                reopenConnection();
+                connect();
         }
     }
 }

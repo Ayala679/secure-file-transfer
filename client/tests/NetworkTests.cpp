@@ -10,7 +10,6 @@ namespace {
 
 constexpr unsigned SHORT_TIMEOUT_MS = 500;
 
-// tiny one-shot server on a free loopback port
 class LoopbackListener {
 public:
     LoopbackListener()

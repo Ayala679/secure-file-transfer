@@ -34,7 +34,6 @@ class AesKeyTest(unittest.TestCase):
 class RsaEncryptTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        # CryptoPP uses e=17 by default, which gives a 160 byte X.509 key
         cls.private_key = RSA.generate(1024, e=17)
         cls.public_der = cls.private_key.public_key().export_key("DER")
 
