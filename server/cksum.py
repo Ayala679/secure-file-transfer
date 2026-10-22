@@ -18,7 +18,6 @@ _TABLE = _build_table()
 
 
 class Cksum:
-    """Same result as the POSIX/Linux cksum command."""
 
     def __init__(self):
         self._crc = 0
@@ -36,7 +35,6 @@ class Cksum:
         self._length += len(data)
 
     def digest(self):
-        # cksum appends the length to the data, low byte first
         saved = self._crc
         n = self._length
         tail = bytearray()

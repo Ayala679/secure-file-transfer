@@ -31,7 +31,6 @@ std::string encode(std::span<const std::uint8_t> data)
 
 std::vector<std::uint8_t> decode(std::string_view text)
 {
-    // CryptoPP silently skips bad characters, so check the input ourselves
     if (text.empty() || text.size() % QUANTUM != 0)
         throw std::invalid_argument("base64 length must be a non-zero multiple of 4");
     const std::size_t padding = text.size() - text.find_last_not_of(PAD) - 1;

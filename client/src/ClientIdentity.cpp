@@ -122,7 +122,6 @@ std::optional<ClientIdentity> ClientIdentity::load(const fs::path& meInfo, const
         identity.clientId[i] = static_cast<std::uint8_t>((high << NIBBLE_BITS) | low);
     }
 
-    // priv.key is the main source, line 3 of me.info is the backup copy
     if (fs::exists(privateKey, ec)) {
         const auto keyLines = readLines(privateKey);
         if (!keyLines.empty())

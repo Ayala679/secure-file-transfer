@@ -16,7 +16,6 @@
 class FileTransferClient {
 public:
     FileTransferClient(TransferConfig config, const std::filesystem::path& baseDir);
-    // returns true when every file was sent and verified
     bool run();
 
 private:
@@ -33,6 +32,7 @@ private:
     };
 
     void connect();
+    void reopenConnection();
     void send(protocol::RequestCode code, protocol::ByteView payload);
     Response receive();
     Response exchange(protocol::RequestCode code, protocol::ByteView payload);
@@ -57,4 +57,5 @@ private:
     protocol::ClientId clientId_{};
     std::string name_;
     protocol::Bytes aesKey_;
+    bool keysEstablished_ = false;
 };

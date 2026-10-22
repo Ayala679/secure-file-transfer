@@ -21,7 +21,6 @@ WINDOWS_RESERVED = {
 
 
 def safe_file_name(name):
-    # keep only the last path component, never trust client paths
     base = name.replace("\\", "/").rsplit("/", 1)[-1].rstrip(" .")
     if (
         not base
@@ -77,7 +76,6 @@ class IncomingFile:
         return self.received == self.packet.content_size
 
     def finish(self, aes_key):
-        """Decrypt to the target file. Returns (cksum, plain size)."""
         self._enc_file.close()
         decryptor = AesCbcDecryptor(aes_key)
         crc = Cksum()

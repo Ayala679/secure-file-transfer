@@ -41,7 +41,6 @@ void Cksum::update(std::span<const std::uint8_t> data)
 
 std::uint32_t Cksum::digest() const
 {
-    // cksum appends the length, low byte first, with no leading zero bytes
     std::uint32_t crc = crc_;
     for (std::uint64_t n = length_; n != 0; n >>= BITS_PER_BYTE)
         crc = feed(crc, static_cast<std::uint8_t>(n & BYTE_MASK));

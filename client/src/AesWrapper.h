@@ -8,7 +8,6 @@
 
 #include <cstdint>
 
-// AES-256-CBC, zero IV, PKCS#7 padding. Fed in chunks so big files never sit in memory.
 class AesCbcEncryptor {
 public:
     explicit AesCbcEncryptor(protocol::ByteView key);

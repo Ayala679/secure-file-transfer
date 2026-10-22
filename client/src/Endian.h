@@ -12,7 +12,6 @@ namespace endian {
 inline constexpr unsigned BITS_PER_BYTE = 8;
 inline constexpr unsigned BYTE_MASK = 0xFF;
 
-// byte by byte, so the result does not depend on the CPU byte order
 template <std::unsigned_integral T>
 void appendLE(std::vector<std::uint8_t>& out, T value)
 {

@@ -15,8 +15,6 @@ public:
     WinsockSession& operator=(const WinsockSession&) = delete;
 };
 
-// Blocking TCP connection. Every failure is a FatalError: once the
-// connection is broken there is nothing left to retry on.
 class TcpConnection {
 public:
     TcpConnection(const std::string& ip, std::uint16_t port, unsigned timeoutMs);

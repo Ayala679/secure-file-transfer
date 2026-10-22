@@ -16,7 +16,6 @@ namespace {
 constexpr DWORD INITIAL_PATH_BUFFER = MAX_PATH;
 constexpr DWORD MAX_PATH_BUFFER = 32 * 1024;
 
-// transfer.json, me.info and priv.key live next to the exe, not in the working directory
 std::filesystem::path executableDirectory()
 {
     std::wstring buffer(INITIAL_PATH_BUFFER, L'\0');

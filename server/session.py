@@ -1,8 +1,14 @@
 import logging
+import shutil
 import socket
 from pathlib import Path
 
-from client_store import FileRecord, NameTakenError, StoreError
+from client_store import (
+    FileRecord,
+    NameTakenError,
+    StoreError,
+    StoreFullError,
+)
 from crypto_utils import CryptoError, encrypt_aes_key, generate_aes_key
 from file_transfer import MAX_CONTENT_SIZE, IncomingFile, same_file
 from protocol import (
@@ -28,6 +34,9 @@ from protocol import (
 RECV_CHUNK_SIZE = 64 * 1024
 CLOSE_DRAIN_TIMEOUT = 1.0
 CLOSE_DRAIN_LIMIT = 1024 * 1024
+MAX_FILES_PER_CLIENT = 1000
+MAX_BYTES_PER_CLIENT = 4 * 1024**3
+MIN_FREE_DISK = 100 * 1024**2
 DEFAULT_FILES_DIR = Path(__file__).resolve().parent / "received_files"
 
 logger = logging.getLogger(__name__)
@@ -51,7 +60,9 @@ class ClientSession:
         self._incoming = None
         self._packet = None
         self._rejected = None
-        # code -> (handler, min payload size, max payload size)
+        self._session_client = None
+        self._session_key = None
+        self._session_files = set()
         self._handlers = {
             RequestCode.REGISTER: (
                 self._handle_register,
@@ -85,7 +96,6 @@ class ClientSession:
                 NAME_SIZE,
             ),
         }
-        # these handlers read their own payload from the socket
         self._streamed = {RequestCode.SEND_FILE}
 
     def run(self):
@@ -99,7 +109,6 @@ class ClientSession:
             )
         except IdleTimeout:
             logger.info("[%s] idle timeout, disconnecting", self._peer)
-        # one bad client must never stop the server
         except Exception as e:  # noqa: BLE001
             logger.error("[%s] unexpected error: %r", self._peer, e)
         finally:
@@ -108,8 +117,6 @@ class ClientSession:
             logger.info("[%s] disconnected", self._peer)
 
     def _close_gracefully(self):
-        # closing with unread data makes Windows send RST,
-        # which can drop our last response
         try:
             self._sock.shutdown(socket.SHUT_WR)
             self._sock.settimeout(CLOSE_DRAIN_TIMEOUT)
@@ -154,7 +161,6 @@ class ClientSession:
         self._store.touch(header.client_id)
         handler, min_size, max_size = entry
         if not min_size <= header.payload_size <= max_size:
-            # can't trust the rest of the stream after a bad length
             logger.warning(
                 "[%s] bad payload size %d for code %d",
                 self._peer,
@@ -182,7 +188,6 @@ class ClientSession:
                 packet is not None
                 and packet.packet_number < packet.total_packets
             ):
-                # one answer per file, so wait for its last packet
                 self._rejected = packet
             else:
                 self._send(ResponseCode.GENERAL_ERROR)
@@ -192,7 +197,7 @@ class ClientSession:
         try:
             name = parse_name_payload(payload)
             record = self._store.register(name)
-        except (ProtocolError, NameTakenError) as e:
+        except (ProtocolError, NameTakenError, StoreFullError) as e:
             logger.warning("[%s] registration failed: %s", self._peer, e)
             self._send(ResponseCode.REGISTER_FAILED)
             return
@@ -214,6 +219,16 @@ class ClientSession:
             raise ProtocolError(f"name '{name}' does not match client id")
         return record
 
+    def _bind_session(self, client_id, aes_key):
+        if self._session_client != client_id:
+            self._session_files.clear()
+        self._session_client = client_id
+        self._session_key = aes_key
+
+    def _require_session(self, client_id):
+        if self._session_key is None or self._session_client != client_id:
+            raise ProtocolError("no key exchange on this connection")
+
     def _handle_public_key(self, header, payload):
         name, public_key = parse_public_key_payload(payload)
         self._known_client(header.client_id, name)
@@ -222,6 +237,7 @@ class ClientSession:
         encrypted_key = encrypt_aes_key(public_key, aes_key)
         self._store.set_public_key(header.client_id, public_key)
         self._store.set_aes_key(header.client_id, aes_key)
+        self._bind_session(header.client_id, aes_key)
 
         logger.info(
             "[%s] got public key from '%s', sending AES key", self._peer, name
@@ -248,6 +264,7 @@ class ClientSession:
             return
 
         self._store.set_aes_key(header.client_id, aes_key)
+        self._bind_session(header.client_id, aes_key)
         logger.info(
             "[%s] '%s' reconnected, sending new AES key", self._peer, name
         )
@@ -271,15 +288,14 @@ class ClientSession:
                 return
             self._rejected = None
 
-        record = self._store.get(header.client_id)
-        if record is None or record.aes_key is None:
-            raise ProtocolError("file sent before key exchange")
+        self._require_session(header.client_id)
 
         if self._incoming is not None and not self._incoming.belongs(packet):
             raise ProtocolError(
                 "packet does not match the file being received"
             )
         if self._incoming is None:
+            self._check_quota(header.client_id, packet)
             folder = self._files_dir / header.client_id.hex()
             self._incoming = IncomingFile(folder, packet)
             logger.info(
@@ -311,7 +327,7 @@ class ClientSession:
             return
 
         incoming, self._incoming = self._incoming, None
-        cksum, plain_size = incoming.finish(record.aes_key)
+        cksum, plain_size = incoming.finish(self._session_key)
         if plain_size != packet.orig_size:
             logger.warning(
                 "[%s] '%s' decrypted to %d bytes, client said %d",
@@ -325,8 +341,11 @@ class ClientSession:
             self._files_dir.parent
         ).as_posix()
         self._store.save_file(
-            FileRecord(header.client_id, packet.file_name, relative_path)
+            FileRecord(
+                header.client_id, packet.file_name, relative_path, plain_size
+            )
         )
+        self._session_files.add(packet.file_name)
         logger.info(
             "[%s] saved '%s' as %s, cksum %d",
             self._peer,
@@ -341,10 +360,33 @@ class ClientSession:
             ),
         )
 
+    def _check_quota(self, client_id, packet):
+        existing = self._store.get_file(client_id, packet.file_name)
+        count, used = self._store.usage(client_id)
+        if existing is None and count >= MAX_FILES_PER_CLIENT:
+            raise ProtocolError("client reached the file count limit")
+        if existing is not None:
+            used -= existing.size
+        if used + packet.orig_size > MAX_BYTES_PER_CLIENT:
+            raise ProtocolError("client reached the storage limit")
+
+        needed = 2 * packet.content_size + MIN_FREE_DISK
+        if shutil.disk_usage(self._existing_parent()).free < needed:
+            raise ProtocolError("not enough free disk space")
+
+    def _existing_parent(self):
+        path = self._files_dir
+        while not path.exists() and path.parent != path:
+            path = path.parent
+        return path
+
     def _received_file(self, header, payload):
         file_name = parse_name_payload(payload)
-        if self._store.get(header.client_id) is None:
-            raise ProtocolError(f"unknown client id {header.client_id.hex()}")
+        self._require_session(header.client_id)
+        if file_name not in self._session_files:
+            raise ProtocolError(
+                f"'{file_name}' was not received on this connection"
+            )
         record = self._store.get_file(header.client_id, file_name)
         if record is None:
             raise ProtocolError(f"no received file named '{file_name}'")
@@ -359,7 +401,6 @@ class ClientSession:
         self._send(ResponseCode.ACK, client_id_payload(header.client_id))
 
     def _handle_crc_retry(self, header, payload):
-        # no response here, the client sends the file again right away
         try:
             record = self._received_file(header, payload)
         except ProtocolError as e:
@@ -375,6 +416,7 @@ class ClientSession:
         record = self._received_file(header, payload)
         (self._files_dir.parent / record.path).unlink(missing_ok=True)
         self._store.remove_file(header.client_id, record.file_name)
+        self._session_files.discard(record.file_name)
         logger.warning(
             "[%s] client gave up on '%s', file deleted",
             self._peer,
@@ -398,8 +440,6 @@ class ClientSession:
         while self._unread:
             self._read_payload(min(self._unread, RECV_CHUNK_SIZE))
 
-    # socket errors become ConnectionClosed/IdleTimeout, so any OSError
-    # that reaches a handler is a local (disk) problem
     def _recv(self, size):
         try:
             return self._sock.recv(size)

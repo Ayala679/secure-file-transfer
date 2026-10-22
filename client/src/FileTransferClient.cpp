@@ -57,6 +57,7 @@ bool FileTransferClient::run()
 {
     connect();
     aesKey_ = establishKeys();
+    keysEstablished_ = true;
 
     std::size_t verified = 0;
     for (const auto& path : config_.files) {
@@ -76,6 +77,13 @@ void FileTransferClient::connect()
     std::cout << "connecting to " << config_.serverIp << ':' << config_.port << '\n';
     connection_.reset();
     connection_ = std::make_unique<TcpConnection>(config_.serverIp, config_.port, config::RECEIVE_TIMEOUT_MS);
+}
+
+void FileTransferClient::reopenConnection()
+{
+    connect();
+    if (keysEstablished_)
+        aesKey_ = establishKeys();
 }
 
 void FileTransferClient::send(RequestCode code, protocol::ByteView payload)
@@ -98,8 +106,6 @@ FileTransferClient::Response FileTransferClient::exchange(RequestCode code, prot
     return receive();
 }
 
-// Runs one request step; on a server error it prints the required message
-// and tries again, up to MAX_SERVER_ERROR_RETRIES more times.
 template <typename Attempt>
 auto FileTransferClient::withRetries(std::string_view action, Attempt attempt)
 {
@@ -113,7 +119,7 @@ auto FileTransferClient::withRetries(std::string_view action, Attempt attempt)
                 throw FatalError(std::string(action) + " failed after "
                                  + std::to_string(config::MAX_SERVER_ERROR_RETRIES + 1) + " attempts: " + e.what());
             if (dynamic_cast<const ProtocolError*>(&e) != nullptr)
-                connect();
+                reopenConnection();
         }
     }
 }
@@ -191,8 +197,6 @@ Bytes FileTransferClient::takeAesKey(const RsaPrivateKey& key, const Response& r
     return aesKey;
 }
 
-// Sends one file and checks the server's cksum: up to MAX_SEND_ATTEMPTS sends,
-// 901 between them and 902 when the last one still does not match.
 bool FileTransferClient::sendFile(const std::filesystem::path& path)
 {
     const OutgoingFile file = prepare(path);
@@ -243,8 +247,6 @@ FileTransferClient::OutgoingFile FileTransferClient::prepare(const std::filesyst
     return {path, std::move(name), static_cast<std::uint32_t>(size), static_cast<std::uint32_t>(contentSize)};
 }
 
-// Streams the file: read, cksum, encrypt and send packet by packet,
-// so the whole file is never held in memory. Returns the local cksum.
 std::uint32_t FileTransferClient::transmit(const OutgoingFile& file)
 {
     std::ifstream in(file.path, std::ios::binary);
@@ -288,7 +290,6 @@ std::uint32_t FileTransferClient::transmit(const OutgoingFile& file)
     }
     append(encryptor.finish());
 
-    // the file changed while we were reading it; the server is now out of sync
     if (bytesRead != file.origSize || pending.size() > plan.packetSize)
         throw FatalError("'" + file.name + "' changed while it was being sent");
     sendPacket(pending.size());

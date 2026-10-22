@@ -79,7 +79,6 @@ def _is_printable_ascii(raw):
     return all(0x20 <= b < 0x7F for b in raw)
 
 
-# fixed 255 byte field, must contain a terminating null
 def decode_name(field):
     if len(field) != NAME_SIZE:
         raise ProtocolError(f"name field must be {NAME_SIZE} bytes")

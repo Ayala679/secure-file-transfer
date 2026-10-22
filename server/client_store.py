@@ -3,12 +3,18 @@ import uuid
 from dataclasses import dataclass, field, replace
 from datetime import datetime
 
+MAX_CLIENTS = 10_000
+
 
 class StoreError(Exception):
     pass
 
 
 class NameTakenError(StoreError):
+    pass
+
+
+class StoreFullError(StoreError):
     pass
 
 
@@ -30,20 +36,24 @@ class FileRecord:
     client_id: bytes
     file_name: str
     path: str
+    size: int = 0
     verified: bool = False
 
 
 class ClientStore:
-    def __init__(self):
+    def __init__(self, max_clients=MAX_CLIENTS):
         self._lock = threading.Lock()
         self._clients = {}
         self._ids_by_name = {}
         self._files = {}
+        self._max_clients = max_clients
 
     def register(self, name):
         with self._lock:
             if name in self._ids_by_name:
                 raise NameTakenError(f"name '{name}' is already registered")
+            if len(self._clients) >= self._max_clients:
+                raise StoreFullError("too many registered clients")
             client_id = uuid.uuid4().bytes
             while client_id in self._clients:
                 client_id = uuid.uuid4().bytes
@@ -103,3 +113,11 @@ class ClientStore:
     def remove_file(self, client_id, file_name):
         with self._lock:
             return self._files.pop((client_id, file_name), None) is not None
+
+    def usage(self, client_id):
+        with self._lock:
+            sizes = [
+                f.size for (cid, _), f in self._files.items()
+                if cid == client_id
+            ]
+            return len(sizes), sum(sizes)

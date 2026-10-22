@@ -4,7 +4,6 @@
 #include <cstdint>
 #include <span>
 
-// Same result as the POSIX/Linux cksum command
 class Cksum {
 public:
     void update(std::span<const std::uint8_t> data);

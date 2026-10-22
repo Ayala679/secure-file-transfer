@@ -33,7 +33,4 @@ private:
     Storage value_;
 };
 
-// A small strict JSON reader for transfer.json.
-// Windows paths are often written with single backslashes, so only \" \\ and \/
-// are treated as escapes and any other backslash is kept as is.
 JsonValue parseJson(std::string_view text);

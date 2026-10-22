@@ -56,7 +56,6 @@ struct PacketPlan {
     std::uint16_t totalPackets;
 };
 
-// throws std::length_error when the content does not fit the 4 byte size field
 PacketPlan planPackets(std::uint64_t contentSize);
 
 ResponseHeader parseResponseHeader(ByteView data);
