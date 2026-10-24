@@ -211,7 +211,7 @@ server responded with an error
 
 ---
 
-## 9. שאלה 3 (בונוס 15%) – SQLite ⏸️ נדחה לסוף
+## 9. שאלה 3 (בונוס 15%) – SQLite ✅ מומש (D28)
 
 - קובץ: **`defensive.db`**.
 - טבלת **`clients`**: ID (16 בתים, אינדקס) · Name (255, null-terminated) · PublicKey (160) · LastSeen (תאריך ושעה) · AES key (256 ביט).

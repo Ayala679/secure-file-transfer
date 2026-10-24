@@ -4,6 +4,7 @@ import threading
 
 from client_store import ClientStore
 from config import read_port
+from database import DEFAULT_DB_PATH, Database, DatabaseError
 from protocol import SERVER_VERSION
 from session import DEFAULT_FILES_DIR, ClientSession
 
@@ -20,10 +21,11 @@ class Server:
         port,
         files_dir=DEFAULT_FILES_DIR,
         idle_timeout=CLIENT_IDLE_TIMEOUT,
+        database=None,
     ):
         self.port = port
         self.ready = threading.Event()
-        self._store = ClientStore()
+        self._store = ClientStore(database)
         self._files_dir = files_dir
         self._idle_timeout = idle_timeout
 
@@ -40,6 +42,11 @@ class Server:
                 self.port,
             )
             logger.info("received files are stored in %s", self._files_dir)
+            if self._store.persistent:
+                clients, files = self._store.counts()
+                logger.info(
+                    "database loaded: %d clients, %d files", clients, files
+                )
             while True:
                 try:
                     conn, address = listener.accept()
@@ -56,6 +63,16 @@ class Server:
         thread.start()
 
 
+def open_database(path=DEFAULT_DB_PATH):
+    try:
+        database = Database(path)
+    except DatabaseError as e:
+        logger.error("%s - running without the database", e)
+        return None
+    logger.info("using database %s", database.path)
+    return database
+
+
 def main():
     logging.basicConfig(
         level=logging.INFO,
@@ -63,8 +80,9 @@ def main():
         datefmt="%H:%M:%S",
     )
     port = read_port()
+    database = open_database()
     try:
-        Server(port).serve_forever()
+        Server(port, database=database).serve_forever()
     except KeyboardInterrupt:
         logger.info("server stopped")
     except OSError as e:

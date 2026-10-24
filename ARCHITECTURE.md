@@ -73,7 +73,7 @@
 | D26 | חיבור אחד | הלקוח פותח **חיבור TCP אחד** לכל הריצה ושולח בו את כל הקבצים | פשוט, מתאים לתרשים |
 | D27 | לוגים | שרת: מודול `logging` למסך. לקוח: הודעות התקדמות ל-`std::cout`, שגיאות ל-`std::cerr` | מעקב + הסרטון |
 | D32 | שגיאה באמצע קובץ | אם חבילה שאינה האחרונה נכשלת, השרת מרוקן את שאר החבילות של אותו קובץ בשקט ושולח **1607 אחד** רק אחרי החבילה האחרונה. שגיאה בחבילה האחרונה → 1607 מיד | הלקוח מצפה לתשובה אחת לכל קובץ; כמה 1607 היו שוברים את הסנכרון |
-| D28 | בונוס SQLite | **נדחה לסוף.** שכבת האחסון בשרת (`ClientStore`) בנויה כך שאפשר להוסיף לה DB בלי לשנות את שאר הקוד | החלטת המשתמשת |
+| D28 | בונוס SQLite ✅ | `database.py` – מחלקה `Database` מעל `sqlite3`, קובץ `defensive.db` ליד קוד השרת. טבלאות `clients` (ID, Name, PublicKey, LastSeen, AESKey) ו-`files` (ID, FileName, PathName, Verified). `ClientStore` מקבל את ה-DB כפרמטר אופציונלי: טוען ממנו בעלייה, וכל שינוי נכתב **קודם ל-DB ואז לזיכרון** (כשל כתיבה → `StoreError` → 1607, והזיכרון לא משתנה). רק `main()` פותח את ה-DB; DB פגום → לוג שגיאה, והשרת ממשיך בזיכרון בלבד. הזיכרון נשאר המקור הראשי | ההוראות: ה-DB **בנוסף** לזיכרון, ושחזור אחרי נפילה בלי לשלוח RSA מחדש |
 | D29 | היררכיית חריגות בלקוח | קובץ `Errors.h`: בסיס `ClientError : std::runtime_error`, ומתחתיו: **`ServerError`** (1601, 1607, קוד לא צפוי, payload בגודל שגוי) → **ניסיון חוזר** לפי D7, עם ההודעה `server responded with an error`; **`ProtocolError`** (תשובה פגומה שאי אפשר לפענח, למשל גרסה/כותרת שבורה) → נחשב גם הוא לשגיאת שרת ועובר ניסיון חוזר; **`FatalError`** (קובץ קונפיגורציה חסר/פגום, כשל חיבור, חיבור שנסגר, קובץ לקוח לא קריא, מיצוי ניסיונות) → יציאה מיידית. `main.cpp` תופס `FatalError` (וכל `std::exception`) ומדפיס `Fatal: <פירוט>` | ההבחנה בין "לנסות שוב" ל"לצאת" חייבת להיות מפורשת בקוד |
 | D30 | קבועים בלקוח | קובץ `Constants.h` עם `constexpr` בלבד: גרסה, כל קודי הבקשות והתשובות (`enum class`), כל גדלי השדות, גודל כותרות, גודל חבילה, מספר ניסיונות, timeouts, שמות קבצים (`transfer.json`, `me.info`, `priv.key`), גדלי מפתחות. **אף מספר לא מופיע ישירות בקוד** | הוראות: "המנעו ממספרי קסם" |
 | D33 | מבנה פרויקט הלקוח | `src/` = רק קבצי ההגשה. `tests/` = פרויקט בדיקות נפרד (`ClientTests`) שמקמפל את אותם קבצי `src` + מסגרת בדיקות קטנה משלנו (בלי ספריות חיצוניות). הגדרות משותפות ב-`client.props`, כולל **warnings as errors**. פלט בנייה ב-`bin/` ו-`obj/` (לא ב-git) | הפרדה בין קוד הגשה לקוד בדיקה; הגדרות זהות לשני הפרויקטים; אין אזהרות שנבלעות |
@@ -98,6 +98,8 @@
 │   ├── protocol.py          קבועים, קודים, pack/unpack
 │   ├── session.py           ClientSession – טיפול בחיבור אחד
 │   ├── client_store.py      ClientRecord, FileRecord, ClientStore (בזיכרון, עם Lock)
+│   ├── database.py          Database – SQLite, defensive.db (בונוס, D28)
+│   ├── file_transfer.py     IncomingFile, safe_file_name
 │   ├── crypto_utils.py      AES/RSA
 │   ├── cksum.py             CRC בסגנון cksum של לינוקס
 │   ├── port.info            (לא מוגש – רק לבדיקה)
@@ -143,6 +145,7 @@
 | `cksum.py` | `Cksum` (`update(bytes)`, `digest(total_len)`) | CRC מצטבר, זהה ל-`cksum` |
 | `crypto_utils.py` | `generate_aes_key()`, `encrypt_aes_key(pub_der, key)`, `AesCbcStreamDecryptor` | הצפנה ופענוח |
 | `client_store.py` | `ClientRecord`, `FileRecord` (dataclass), `ClientStore` | רישום, חיפוש לפי שם / ID, עדכון מפתחות, רשימת קבצים. כל פעולה תחת `Lock` |
+| `database.py` | `Database`, `DatabaseError` | SQLite: יצירת הטבלאות, כתיבה וטעינה (בונוס) |
 | `file_transfer.py` | `IncomingFile`, `safe_file_name` | קבלת קובץ לקובץ זמני, פענוח זורם + cksum, ניקוי שם הקובץ |
 | `session.py` | `ClientSession` | `recv_exact`, קריאת כותרת, ניתוב לפי קוד (`_handle_register`, `_handle_public_key`, `_handle_reconnect`, `_handle_file`, `_handle_crc_*`), תפיסת חריגות → 1607 |
 | `server.py` | `Server`, `main()` | bind/listen, accept בלולאה אינסופית, thread לכל חיבור |
