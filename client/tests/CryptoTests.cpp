@@ -164,6 +164,14 @@ TEST_CASE(identity_falls_back_to_me_info_key)
     CHECK(loaded->clientId[15] == 0x0f);
 }
 
+TEST_CASE(identity_with_utf8_bom)
+{
+    TempDir dir;
+    dir.write(dir.meInfo(), "\xEF\xBB\xBFme\r\n000102030405060708090a0b0c0d0e0f\r\nZm9vYmFy\r\n");
+    const auto loaded = ClientIdentity::load(dir.meInfo(), dir.privKey());
+    CHECK(loaded->name == "me");
+}
+
 TEST_CASE(identity_corrupt_files)
 {
     for (const char* content : {"", "only-name\n", "me\nnot-hex-not-hex-not-hex-not-he\nZm9v\n",

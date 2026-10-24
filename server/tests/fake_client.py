@@ -119,7 +119,7 @@ if __name__ == "__main__":
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 1234
     name = sys.argv[2] if len(sys.argv) > 2 else "test-user"
     path = sys.argv[3] if len(sys.argv) > 3 else None
-    with FakeClient("127.0.0.1", port) as client:
+    with FakeClient("127.0.0.1", port, timeout=120) as client:
         aes_key = client.setup(name, RSA.generate(1024, e=17))
         print(f"registered '{name}' as {client.client_id.hex()}, got AES key")
         if path:

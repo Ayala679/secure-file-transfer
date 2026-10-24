@@ -178,6 +178,7 @@ class ClientSession:
             ):
                 self._rejected = packet
             else:
+                self._rejected = None
                 self._send(ResponseCode.GENERAL_ERROR)
         return True
 

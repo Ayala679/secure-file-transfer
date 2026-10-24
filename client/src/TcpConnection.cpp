@@ -7,6 +7,8 @@
 #include <algorithm>
 #include <climits>
 
+#pragma comment(lib, "Ws2_32.lib")
+
 namespace {
 
 constexpr WORD WINSOCK_VERSION_REQUESTED = MAKEWORD(2, 2);
@@ -66,7 +68,7 @@ TcpConnection::~TcpConnection()
 void TcpConnection::sendAll(protocol::ByteView data)
 {
     while (!data.empty()) {
-        const int chunk = static_cast<int>(std::min(data.size(), MAX_IO_CHUNK));
+        const int chunk = static_cast<int>((std::min)(data.size(), MAX_IO_CHUNK));
         const int sent = send(socket_, reinterpret_cast<const char*>(data.data()), chunk, 0);
         if (sent == SOCKET_ERROR || sent == 0)
             throw FatalError(lastError("connection to the server was lost while sending"));
@@ -79,7 +81,7 @@ protocol::Bytes TcpConnection::receiveExact(std::size_t size)
     protocol::Bytes buffer(size);
     std::size_t received = 0;
     while (received < size) {
-        const int chunk = static_cast<int>(std::min(size - received, MAX_IO_CHUNK));
+        const int chunk = static_cast<int>((std::min)(size - received, MAX_IO_CHUNK));
         const int got = recv(socket_, reinterpret_cast<char*>(buffer.data() + received), chunk, 0);
         if (got == 0)
             throw FatalError("the server closed the connection");

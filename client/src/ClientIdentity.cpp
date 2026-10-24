@@ -22,6 +22,7 @@ constexpr unsigned NIBBLE_MASK = 0xF;
 constexpr char HEX_DIGITS[] = "0123456789abcdef";
 constexpr char FIRST_PRINTABLE = 0x20;
 constexpr char LAST_PRINTABLE = 0x7E;
+constexpr std::string_view UTF8_BOM = "\xEF\xBB\xBF";
 
 [[noreturn]] void corrupt(const std::string& what)
 {
@@ -51,6 +52,9 @@ std::vector<std::string> readLines(const fs::path& path)
     content.resize(static_cast<std::size_t>(in.gcount()));
     if (content.size() > MAX_IDENTITY_FILE_SIZE)
         throw FatalError(path.filename().string() + " is too large");
+
+    if (content.starts_with(UTF8_BOM))
+        content.erase(0, UTF8_BOM.size());
 
     std::vector<std::string> lines;
     std::istringstream stream(content);

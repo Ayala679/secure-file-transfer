@@ -24,8 +24,8 @@ bool isBase64Char(char c)
 std::string encode(std::span<const std::uint8_t> data)
 {
     std::string out;
-    CryptoPP::StringSource(data.data(), data.size(), true,
-                           new CryptoPP::Base64Encoder(new CryptoPP::StringSink(out), false));
+    const CryptoPP::StringSource source(data.data(), data.size(), true,
+                                        new CryptoPP::Base64Encoder(new CryptoPP::StringSink(out), false));
     return out;
 }
 
@@ -41,8 +41,8 @@ std::vector<std::uint8_t> decode(std::string_view text)
         throw std::invalid_argument("invalid base64 character");
 
     std::string decoded;
-    CryptoPP::StringSource(reinterpret_cast<const CryptoPP::byte*>(text.data()), text.size(), true,
-                           new CryptoPP::Base64Decoder(new CryptoPP::StringSink(decoded)));
+    const CryptoPP::StringSource source(reinterpret_cast<const CryptoPP::byte*>(text.data()), text.size(), true,
+                                        new CryptoPP::Base64Decoder(new CryptoPP::StringSink(decoded)));
     return {decoded.begin(), decoded.end()};
 }
 

@@ -38,8 +38,10 @@ private:
     template <typename Attempt>
     auto withRetries(std::string_view action, Attempt attempt);
 
-    protocol::Bytes establishKeys();
-    std::optional<protocol::Bytes> reconnect(const ClientIdentity& identity);
+    static RsaPrivateKey loadSavedKey(const ClientIdentity& identity);
+    protocol::Bytes establishKeys(const std::optional<ClientIdentity>& identity,
+                                  const std::optional<RsaPrivateKey>& savedKey);
+    std::optional<protocol::Bytes> reconnect(const ClientIdentity& identity, const RsaPrivateKey& key);
     protocol::Bytes registerNew();
     protocol::Bytes takeAesKey(const RsaPrivateKey& key, const Response& response) const;
 

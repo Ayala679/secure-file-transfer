@@ -44,6 +44,15 @@ class ReadPortTest(unittest.TestCase):
     def test_non_ascii(self):
         self.check_fallback("١٢٣".encode())
 
+    def test_utf8_bom(self):
+        self.path.write_bytes(b"\xef\xbb\xbf1234\r\n")
+        self.assertEqual(read_port(self.path), 1234)
+
+    def test_directory(self):
+        self.path.mkdir()
+        with self.assertLogs("config", level="WARNING"):
+            self.assertEqual(read_port(self.path), DEFAULT_PORT)
+
     def test_huge_file(self):
         self.check_fallback(b"1234" + b" " * 10_000_000)
 

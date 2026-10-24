@@ -6,6 +6,7 @@ DEFAULT_PORT = 1369
 MIN_PORT = 1
 MAX_PORT = 65535
 PORT_INFO_LIMIT = 16
+UTF8_BOM = b"\xef\xbb\xbf"
 
 logger = logging.getLogger(__name__)
 
@@ -16,7 +17,7 @@ def _parse_port(path):
     if len(data) > PORT_INFO_LIMIT:
         raise ValueError("file is too big")
 
-    value = data.decode("ascii").strip()
+    value = data.removeprefix(UTF8_BOM).decode("ascii").strip()
     if not value.isdigit():
         raise ValueError(f"'{value}' is not a number")
 

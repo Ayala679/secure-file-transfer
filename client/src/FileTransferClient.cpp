@@ -55,8 +55,13 @@ FileTransferClient::FileTransferClient(TransferConfig config, const std::filesys
 
 bool FileTransferClient::run()
 {
+    const auto identity = ClientIdentity::load(meInfoPath_, privateKeyPath_);
+    std::optional<RsaPrivateKey> savedKey;
+    if (identity)
+        savedKey = loadSavedKey(*identity);
+
     connect();
-    aesKey_ = establishKeys();
+    aesKey_ = establishKeys(identity, savedKey);
 
     std::size_t verified = 0;
     for (const auto& path : config_.files) {
@@ -116,10 +121,22 @@ auto FileTransferClient::withRetries(std::string_view action, Attempt attempt)
     }
 }
 
-Bytes FileTransferClient::establishKeys()
+RsaPrivateKey FileTransferClient::loadSavedKey(const ClientIdentity& identity)
 {
-    if (auto identity = ClientIdentity::load(meInfoPath_, privateKeyPath_)) {
-        if (auto aesKey = reconnect(*identity))
+    try {
+        return RsaPrivateKey::fromDer(base64::decode(identity.privateKeyBase64));
+    } catch (const FatalError& e) {
+        throw FatalError(std::string("the saved private key is unusable (") + e.what() + "). Delete "
+                         + std::string(config::ME_FILE) + " and " + std::string(config::PRIVATE_KEY_FILE)
+                         + " to register again");
+    }
+}
+
+Bytes FileTransferClient::establishKeys(const std::optional<ClientIdentity>& identity,
+                                        const std::optional<RsaPrivateKey>& savedKey)
+{
+    if (identity && savedKey) {
+        if (auto aesKey = reconnect(*identity, *savedKey))
             return *aesKey;
         std::cout << "server rejected the reconnect, registering as a new client\n";
         ClientIdentity::remove(meInfoPath_, privateKeyPath_);
@@ -128,19 +145,10 @@ Bytes FileTransferClient::establishKeys()
     return registerNew();
 }
 
-std::optional<Bytes> FileTransferClient::reconnect(const ClientIdentity& identity)
+std::optional<Bytes> FileTransferClient::reconnect(const ClientIdentity& identity, const RsaPrivateKey& key)
 {
     name_ = identity.name;
     clientId_ = identity.clientId;
-    const auto key = [&] {
-        try {
-            return RsaPrivateKey::fromDer(base64::decode(identity.privateKeyBase64));
-        } catch (const FatalError& e) {
-            throw FatalError(std::string("the saved private key is unusable (") + e.what() + "). Delete "
-                             + std::string(config::ME_FILE) + " and " + std::string(config::PRIVATE_KEY_FILE)
-                             + " to register again");
-        }
-    }();
     std::cout << "found " << config::ME_FILE << ", reconnecting as '" << name_ << "' (" << toHex(clientId_)
               << ")\n";
 
