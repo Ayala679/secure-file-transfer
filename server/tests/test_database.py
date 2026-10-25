@@ -96,6 +96,25 @@ class PersistenceTest(TempDbTest):
         self.assertIsNone(reloaded.get_file(rec.client_id, "b.bin"))
         self.assertEqual(reloaded.counts(), (1, 1))
 
+    def test_sql_injection_is_stored_as_plain_text(self):
+        names = [
+            "x'); DROP TABLE clients; --",
+            "' OR '1'='1",
+            'a"; DELETE FROM files; --',
+        ]
+        store = ClientStore(self.open())
+        for name in names:
+            rec = store.register(name)
+            store.save_file(FileRecord(rec.client_id, name, "rf/x"))
+        reloaded = ClientStore(self.open())
+        self.assertEqual(reloaded.counts(), (3, 3))
+        for name in names:
+            self.assertIsNotNone(reloaded.find_by_name(name))
+        self.assertEqual(
+            self.columns("clients"),
+            ["ID", "Name", "PublicKey", "LastSeen", "AESKey"],
+        )
+
     def test_name_still_taken_after_restart(self):
         ClientStore(self.open()).register("taken")
         with self.assertRaises(NameTakenError):
